@@ -8,8 +8,10 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
+  withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { C, spring as springTokens } from '../theme';
 
 const TAB_ICONS = {
   Discover: Orbit,
@@ -18,18 +20,25 @@ const TAB_ICONS = {
   Request: MessageSquarePlus,
 };
 
-const springConfig = { damping: 14, stiffness: 320, mass: 0.45 };
+const springConfig = springTokens.snappy;
 
 function TabButton({ route, isFocused, onPress }) {
   const Icon = TAB_ICONS[route.name];
   const scale = useSharedValue(isFocused ? 1.14 : 1);
+  const halo = useSharedValue(isFocused ? 1 : 0);
 
   useEffect(() => {
     scale.value = withSpring(isFocused ? 1.14 : 1, springConfig);
-  }, [isFocused, scale]);
+    halo.value = withTiming(isFocused ? 1 : 0, { duration: 260 });
+  }, [isFocused, scale, halo]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
+  }));
+
+  const haloStyle = useAnimatedStyle(() => ({
+    opacity: halo.value,
+    transform: [{ scale: 0.6 + halo.value * 0.4 }],
   }));
 
   const handlePress = () => {
@@ -45,12 +54,13 @@ function TabButton({ route, isFocused, onPress }) {
       accessibilityLabel={route.name}
       style={styles.tabButton}
     >
+      <Animated.View style={[styles.halo, haloStyle]} pointerEvents="none" />
       <Animated.View
         style={[
           animatedStyle,
           styles.iconWrap,
           isFocused && {
-            shadowColor: '#8B7CF6',
+            shadowColor: C.accent,
             shadowOffset: { width: 0, height: 0 },
             shadowOpacity: 0.9,
             shadowRadius: 14,
@@ -59,9 +69,9 @@ function TabButton({ route, isFocused, onPress }) {
       >
         <Icon
           size={23}
-          color={isFocused ? '#C4B5FD' : 'rgba(255,255,255,0.45)'}
+          color={isFocused ? C.accentHi : 'rgba(255,255,255,0.45)'}
           strokeWidth={isFocused ? 2.25 : 1.75}
-          fill={isFocused && route.name === 'Saved' ? '#C4B5FD' : 'transparent'}
+          fill={isFocused && route.name === 'Saved' ? C.accentHi : 'transparent'}
         />
       </Animated.View>
       {isFocused && <View style={styles.activeDot} />}
@@ -152,6 +162,16 @@ const styles = StyleSheet.create({
   iconWrap: {
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  halo: {
+    position: 'absolute',
+    top: 0,
+    left: '50%',
+    marginLeft: -20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(139,124,246,0.16)',
   },
   activeDot: {
     marginTop: 6,
