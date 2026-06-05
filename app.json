@@ -32,7 +32,13 @@
       "expo-font",
       "expo-splash-screen",
       "expo-sensors",
-      "expo-audio"
+      "expo-audio",
+      [
+        "expo-notifications",
+        {
+          "color": "#8B7CF6"
+        }
+      ]
     ]
   }
 }

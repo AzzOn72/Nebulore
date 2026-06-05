@@ -1,4 +1,4 @@
-import { memo, useCallback, useState } from 'react';
+import { memo, useCallback } from 'react';
 import { Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -12,8 +12,8 @@ import Animated, {
   useSharedValue,
   withSpring,
 } from 'react-native-reanimated';
-import DeepDiveModal from './DeepDiveModal';
 import { getTeaserHook } from '../utils/getTeaserHook';
+import { useUiStore } from '../store/useUiStore';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -21,7 +21,7 @@ const MAX_ROTATE_DEG = 6;
 const SPRING_CONFIG = { damping: 18, stiffness: 200, mass: 0.6 };
 
 function FactCard({ fact }) {
-  const [deepDiveVisible, setDeepDiveVisible] = useState(false);
+  const openDeepDive = useUiStore((state) => state.openDeepDive);
   const teaserHook = getTeaserHook(fact.body, 2);
 
   const translateX = useSharedValue(0);
@@ -50,12 +50,8 @@ function FactCard({ fact }) {
 
   const handleOpenDeepDive = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setDeepDiveVisible(true);
-  }, []);
-
-  const handleCloseDeepDive = useCallback(() => {
-    setDeepDiveVisible(false);
-  }, []);
+    openDeepDive(fact);
+  }, [openDeepDive, fact]);
 
   return (
     <GestureDetector gesture={panGesture}>
@@ -122,12 +118,6 @@ function FactCard({ fact }) {
             </Animated.View>
           </View>
         </Pressable>
-
-        <DeepDiveModal
-          visible={deepDiveVisible}
-          fact={fact}
-          onClose={handleCloseDeepDive}
-        />
       </Animated.View>
     </GestureDetector>
   );

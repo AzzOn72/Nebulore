@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import { Bookmark, MessageSquarePlus, Orbit } from 'lucide-react-native';
+import { Bookmark, Gauge, MessageSquarePlus, Orbit } from 'lucide-react-native';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 const TAB_ICONS = {
   Discover: Orbit,
   Saved: Bookmark,
+  Dashboard: Gauge,
   Request: MessageSquarePlus,
 };
 

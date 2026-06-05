@@ -35,3 +35,18 @@ export async function fetchFactsBatch({ excludeIds = [], category = null, limit 
 
   return (data ?? []).map((row, index) => mapSupabaseFact(row, offset + index));
 }
+
+export async function fetchFactById(id) {
+  const { data, error } = await supabase
+    .from('facts')
+    .select('id, title, description, category')
+    .eq('id', id)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data ? mapSupabaseFact(data, 0) : null;
+}

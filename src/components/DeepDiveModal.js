@@ -9,10 +9,11 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import { Bookmark, ChevronLeft, Share2 } from 'lucide-react-native';
+import { Bookmark, ChevronLeft, Headphones, Share2, Square } from 'lucide-react-native';
 import Animated, { FadeIn, FadeOut, ZoomIn, ZoomOut } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFactStore } from '../store/useFactStore';
+import { useNeuralSync } from '../hooks/useNeuralSync';
 import { formatShareMessage } from '../utils/formatShareMessage';
 
 function Paragraphs({ text }) {
@@ -39,12 +40,20 @@ export default function DeepDiveModal({ visible, fact, onClose }) {
   const toggleSave = useFactStore((state) => state.toggleSave);
   const markSeen = useFactStore((state) => state.markSeen);
 
+  const neural = useNeuralSync(fact?.body ?? '');
+
   const handleClose = () => {
     if (fact) {
       markSeen(fact.id);
     }
+    neural.stop();
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     onClose();
+  };
+
+  const handleListen = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    neural.toggle();
   };
 
   const handleSave = () => {
@@ -134,20 +143,40 @@ export default function DeepDiveModal({ visible, fact, onClose }) {
             pointerEvents="none"
           />
 
-          <Pressable
-            onPress={handleSave}
-            style={[styles.saveButton, isSaved && styles.saveButtonActive]}
-          >
-            <Bookmark
-              size={20}
-              color={isSaved ? '#C4B5FD' : '#E5E5E5'}
-              fill={isSaved ? '#C4B5FD' : 'transparent'}
-              strokeWidth={1.75}
-            />
-            <Text style={[styles.saveLabel, isSaved && styles.saveLabelActive]}>
-              {isSaved ? 'Saved to Library' : 'Save to Library'}
-            </Text>
-          </Pressable>
+          <View style={styles.actionRow}>
+            <Pressable
+              onPress={handleListen}
+              accessibilityRole="button"
+              accessibilityLabel={neural.isPlaying ? 'Stop narration' : 'Listen to article'}
+              style={[styles.listenButton, neural.isPlaying && styles.listenButtonActive]}
+            >
+              {neural.isPlaying ? (
+                <Square size={18} color="#C4B5FD" fill="#C4B5FD" strokeWidth={1.75} />
+              ) : (
+                <Headphones size={20} color="#E5E5E5" strokeWidth={1.75} />
+              )}
+              <Text
+                style={[styles.listenLabel, neural.isPlaying && styles.listenLabelActive]}
+              >
+                {neural.isPlaying ? 'Stop' : 'Listen'}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={handleSave}
+              style={[styles.saveButton, isSaved && styles.saveButtonActive]}
+            >
+              <Bookmark
+                size={20}
+                color={isSaved ? '#C4B5FD' : '#E5E5E5'}
+                fill={isSaved ? '#C4B5FD' : 'transparent'}
+                strokeWidth={1.75}
+              />
+              <Text style={[styles.saveLabel, isSaved && styles.saveLabelActive]}>
+                {isSaved ? 'Saved' : 'Save to Library'}
+              </Text>
+            </Pressable>
+          </View>
         </View>
       </Animated.View>
     </Modal>
@@ -251,7 +280,38 @@ const styles = StyleSheet.create({
     top: -40,
     height: 40,
   },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  listenButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 16,
+    paddingHorizontal: 22,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(229,229,229,0.12)',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  listenButtonActive: {
+    borderColor: 'rgba(139,124,246,0.4)',
+    backgroundColor: 'rgba(139,124,246,0.12)',
+  },
+  listenLabel: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 15,
+    color: '#E5E5E5',
+    letterSpacing: 0.3,
+  },
+  listenLabelActive: {
+    color: '#C4B5FD',
+  },
   saveButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

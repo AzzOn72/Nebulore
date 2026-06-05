@@ -1,5 +1,6 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
+import DashboardScreen from '../screens/DashboardScreen';
 import FeedScreen from '../screens/FeedScreen';
 import RequestScreen from '../screens/RequestScreen';
 import SavedScreen from '../screens/SavedScreen';
@@ -41,6 +42,7 @@ export default function AppNavigator() {
       >
         <Tab.Screen name="Discover" component={FeedScreen} />
         <Tab.Screen name="Saved" component={SavedScreen} />
+        <Tab.Screen name="Dashboard" component={DashboardScreen} />
         <Tab.Screen name="Request" component={RequestScreen} />
       </Tab.Navigator>
     </NavigationContainer>
