@@ -31,7 +31,8 @@
     "plugins": [
       "expo-font",
       "expo-splash-screen",
-      "expo-sensors"
+      "expo-sensors",
+      "expo-audio"
     ]
   }
 }
