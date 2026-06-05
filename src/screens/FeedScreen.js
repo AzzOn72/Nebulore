@@ -1,8 +1,9 @@
 import { useCallback, useRef } from 'react';
-import { ActivityIndicator, Dimensions, Text, View } from 'react-native';
+import { ActivityIndicator, Dimensions, StyleSheet, Text, View } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import CategoryPillMenu from '../components/CategoryPillMenu';
 import FactCard from '../components/FactCard';
 import { useFactStore } from '../store/useFactStore';
 import { useFactsStore } from '../store/useFactsStore';
@@ -70,21 +71,30 @@ export default function FeedScreen() {
 
   if (facts.length === 0) {
     return (
-      <View className="flex-1 items-center justify-center bg-void px-10">
-        <Text className="text-center font-inter-semibold text-lg text-white/70">
-          The void is empty
-        </Text>
-        <Text className="mt-2 text-center font-inter text-sm text-white/40">
-          {error
-            ? 'Unable to reach the cosmos. Check your connection.'
-            : "You've explored everything. Check your Saved library."}
-        </Text>
+      <View className="flex-1 bg-void">
+        <View style={{ paddingTop: insets.top + 8 }}>
+          <CategoryPillMenu />
+        </View>
+        <View className="flex-1 items-center justify-center px-10">
+          <Text className="text-center font-inter-semibold text-lg text-white/70">
+            The void is empty
+          </Text>
+          <Text className="mt-2 text-center font-inter text-sm text-white/40">
+            {error
+              ? 'Unable to reach the cosmos. Check your connection.'
+              : "You've explored everything. Check your Saved library."}
+          </Text>
+        </View>
       </View>
     );
   }
 
   return (
     <View className="flex-1 bg-void">
+      <View style={[styles.pillOverlay, { top: insets.top + 4 }]}>
+        <CategoryPillMenu />
+      </View>
+
       <FlashList
         data={facts}
         renderItem={renderItem}
@@ -111,3 +121,12 @@ export default function FeedScreen() {
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  pillOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 10,
+  },
+});

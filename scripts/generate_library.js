@@ -44,16 +44,55 @@ const MAX_TOKENS = Number.parseInt(process.env.GROQ_MAX_TOKENS, 10) || 5800;
 // raise GENERATE_DELAY_MS on free tier to avoid rate limits.
 const DELAY_MS = Number.parseInt(process.env.GENERATE_DELAY_MS, 10) || 4000;
 
-const GROQ_PROMPT =
-  'You are a world-class astrophysicist and science writer. Generate 5 highly ' +
-  'detailed, mind-blowing, long-form articles about the universe, quantum ' +
-  'mechanics, or space-time. Each article must be deeply explained, ' +
-  'fascinating, and at least 600 words long (this length requirement is ' +
-  'critical — do not write short articles). Within each description, separate ' +
-  'paragraphs with two newline characters (\\n\\n) so the article has 4-5 ' +
-  'substantial paragraphs. Output ' +
-  'strictly as a JSON array of objects with \'title\' and \'description\' keys. ' +
-  'Do not use markdown wrappers, just raw JSON.';
+const CATEGORIES = [
+  {
+    key: 'cosmos',
+    label: 'Cosmos & Quantum Physics',
+    prompt:
+      'astrophysics, quantum mechanics, cosmology, spacetime, or particle physics',
+  },
+  {
+    key: 'markets',
+    label: 'Market Psychology & Economics',
+    prompt:
+      'institutional trading behavior, game theory, macro-economic shifts, or market psychology',
+  },
+  {
+    key: 'biology',
+    label: 'Human Performance & Biology',
+    prompt:
+      'extreme muscle physiology, biomechanics, longevity science, or human performance optimization',
+  },
+  {
+    key: 'probability',
+    label: 'Probability & Quantitative Models',
+    prompt:
+      'statistical anomalies, predictive systems, Bayesian inference, or quantitative modeling',
+  },
+  {
+    key: 'tech',
+    label: 'Virtual Realms & Emerging Tech',
+    prompt:
+      'spatial computing, digital constructs, virtual reality, or emerging technology paradigms',
+  },
+];
+
+function pickCategory() {
+  return CATEGORIES[Math.floor(Math.random() * CATEGORIES.length)];
+}
+
+function buildPrompt(category) {
+  return (
+    `You are a world-class expert in ${category.label}. Generate 5 highly ` +
+    `detailed, mind-blowing, long-form articles about ${category.prompt}. ` +
+    'Each article must be deeply explained, fascinating, and at least 600 words ' +
+    'long (this length requirement is critical — do not write short articles). ' +
+    'Within each description, separate paragraphs with two newline characters ' +
+    '(\\n\\n) so the article has 4-5 substantial paragraphs. Output ' +
+    'strictly as a JSON array of objects with \'title\' and \'description\' keys. ' +
+    'Do not use markdown wrappers, just raw JSON.'
+  );
+}
 
 function readEnv(...names) {
   for (const name of names) {
@@ -144,7 +183,12 @@ function parseArticles(content) {
     }));
 }
 
-async function generateArticles(groqApiKey) {
+function attachCategory(articles, categoryKey) {
+  return articles.map((a) => ({ ...a, category: categoryKey }));
+}
+
+async function generateArticles(groqApiKey, category) {
+  const prompt = buildPrompt(category);
   const response = await fetch(GROQ_API_URL, {
     method: 'POST',
     headers: {
@@ -154,7 +198,7 @@ async function generateArticles(groqApiKey) {
     body: JSON.stringify({
       model: GROQ_MODEL,
       messages: [
-        { role: 'system', content: GROQ_PROMPT },
+        { role: 'system', content: prompt },
         { role: 'user', content: 'Generate the 5 articles now as raw JSON.' },
       ],
       temperature: 0.9,
@@ -169,7 +213,8 @@ async function generateArticles(groqApiKey) {
 
   const json = await response.json();
   const content = json?.choices?.[0]?.message?.content;
-  return parseArticles(content);
+  const articles = parseArticles(content);
+  return attachCategory(articles, category.key);
 }
 
 async function insertArticles(supabase, articles) {
@@ -179,6 +224,15 @@ async function insertArticles(supabase, articles) {
     .select('id');
 
   if (error) {
+    // If the category column doesn't exist yet, retry without it.
+    if (error.message && error.message.includes("'category'")) {
+      const withoutCat = articles.map(({ category: _, ...rest }) => rest);
+      const retry = await supabase.from('facts').insert(withoutCat).select('id');
+      if (retry.error) {
+        throw new Error(`Supabase insert failed: ${retry.error.message}`);
+      }
+      return retry.data?.length ?? withoutCat.length;
+    }
     throw new Error(`Supabase insert failed: ${error.message}`);
   }
 
@@ -211,7 +265,8 @@ async function main() {
   while (round < maxRounds && !stopping) {
     round += 1;
     try {
-      const articles = await generateArticles(groqApiKey);
+      const category = pickCategory();
+      const articles = await generateArticles(groqApiKey, category);
 
       if (!articles.length) {
         console.warn(`[round ${round}] No valid articles parsed; retrying after delay.`);
@@ -220,7 +275,7 @@ async function main() {
         totalInserted += inserted;
         console.log(
           `Successfully added ${inserted} new theories to the void... ` +
-            `(round ${round}, total ${totalInserted})`,
+            `[${category.label}] (round ${round}, total ${totalInserted})`,
         );
       }
     } catch (error) {

@@ -12,15 +12,19 @@ function formatExcludeFilter(ids) {
   return `(${ids.map((id) => `"${id}"`).join(',')})`;
 }
 
-export async function fetchFactsBatch({ excludeIds = [], limit = 20, offset = 0 } = {}) {
+export async function fetchFactsBatch({ excludeIds = [], category = null, limit = 20, offset = 0 } = {}) {
   let query = supabase
     .from('facts')
-    .select('id, title, description')
+    .select('id, title, description, category')
     .order('id', { ascending: true });
 
   const filter = formatExcludeFilter(excludeIds);
   if (filter) {
     query = query.not('id', 'in', filter);
+  }
+
+  if (category) {
+    query = query.eq('category', category);
   }
 
   const { data, error } = await query.range(offset, offset + limit - 1);
