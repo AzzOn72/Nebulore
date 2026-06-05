@@ -1,16 +1,12 @@
 import { memo, useCallback, useState } from 'react';
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { Canvas, RoundedRect, Shadow } from '@shopify/react-native-skia';
 import { CATEGORIES } from '../config/categories';
 import { useFactsStore } from '../store/useFactsStore';
+import PressableScale from './PressableScale';
+import { C, type as T } from '../theme';
 
 function GlowBorder({ color, width, height }) {
   const r = (height - 2) / 2;
@@ -50,15 +46,18 @@ function Pill({ category, isActive, onPress }) {
   }, [onPress, category.key]);
 
   return (
-    <Pressable onPress={handlePress} onLayout={handleLayout}>
+    <PressableScale onPress={handlePress} onLayout={handleLayout}>
       <View
         style={[
           styles.pill,
-          isActive && { borderColor: `${category.accent}55` },
+          isActive && {
+            borderColor: `${category.accent}55`,
+            backgroundColor: `${category.accent}14`,
+          },
         ]}
       >
         <BlurView
-          intensity={isActive ? 30 : 20}
+          intensity={isActive ? 32 : 18}
           tint="dark"
           style={StyleSheet.absoluteFill}
         />
@@ -69,16 +68,21 @@ function Pill({ category, isActive, onPress }) {
             height={PILL_HEIGHT}
           />
         )}
-        <Text
-          style={[
-            styles.label,
-            isActive && { color: category.accent, opacity: 1 },
-          ]}
-        >
-          {category.short}
-        </Text>
+        <View style={styles.pillRow}>
+          {isActive && (
+            <View style={[styles.dot, { backgroundColor: category.accent }]} />
+          )}
+          <Text
+            style={[
+              styles.label,
+              isActive && { color: category.accent, opacity: 1 },
+            ]}
+          >
+            {category.short}
+          </Text>
+        </View>
       </View>
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -126,17 +130,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     borderRadius: PILL_HEIGHT / 2,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: C.hairlineLum,
     justifyContent: 'center',
     alignItems: 'center',
     overflow: 'hidden',
     backgroundColor: 'rgba(255,255,255,0.04)',
   },
+  pillRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  dot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+  },
   label: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 13,
-    letterSpacing: 0.4,
-    color: 'rgba(229,229,229,0.5)',
+    ...T.label,
+    color: C.textTertiary,
   },
 });
 

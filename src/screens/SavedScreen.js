@@ -72,7 +72,7 @@ export default function SavedScreen() {
         }}
       >
         <View className="mb-5 px-6">
-          <Text className="font-inter-bold text-3xl text-white">Saved</Text>
+          <Text className="font-serif-semibold text-4xl text-white">Saved</Text>
           <Text className="mt-1 font-inter text-sm text-white/45">
             {!hasSaved
               ? 'Your cosmic library awaits'
@@ -100,7 +100,12 @@ export default function SavedScreen() {
             keyboardDismissMode="on-drag"
           >
             {filtered.map((fact, index) => (
-              <SavedFactItem key={fact.id} fact={fact} index={index} />
+              <SavedFactItem
+                key={fact.id}
+                fact={fact}
+                index={index}
+                query={query}
+              />
             ))}
           </ScrollView>
         )}

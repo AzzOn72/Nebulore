@@ -24,6 +24,7 @@ import CosmosSubmitButton from '../components/CosmosSubmitButton';
 import GlassTextInput from '../components/GlassTextInput';
 import { useToast } from '../context/ToastContext';
 import { useTheoryStore } from '../store/useTheoryStore';
+import { fonts } from '../theme';
 
 const TITLE_MAX = 80;
 const DESC_MAX = 500;
@@ -228,8 +229,9 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   headerTitle: {
-    fontFamily: 'Inter_700Bold',
-    fontSize: 32,
+    fontFamily: fonts.serifSemibold,
+    fontSize: 36,
+    lineHeight: 42,
     color: '#FFFFFF',
     marginBottom: 6,
   },

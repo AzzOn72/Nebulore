@@ -1,58 +1,74 @@
 import { useEffect } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { StyleSheet, View } from 'react-native';
 import Animated, {
+  Easing,
   FadeOut,
   useAnimatedStyle,
   useSharedValue,
+  withDelay,
   withRepeat,
   withTiming,
 } from 'react-native-reanimated';
+import { C, fonts } from '../theme';
 
+// "First Light" — a cold open. Pure void, then a single point ignites,
+// an expanding shell of light blooms, and the serif wordmark resolves.
 export default function NebuloreSplash({ visible = true }) {
-  const opacity = useSharedValue(0.6);
-  const glowScale = useSharedValue(1);
+  const star = useSharedValue(0); // core ignition 0..1
+  const ring = useSharedValue(0); // expanding shell 0..1
+  const word = useSharedValue(0); // wordmark reveal 0..1
+  const twinkle = useSharedValue(1);
 
   useEffect(() => {
-    opacity.value = withRepeat(
-      withTiming(1, { duration: 1800 }),
-      -1,
-      true,
+    star.value = withTiming(1, { duration: 700, easing: Easing.out(Easing.cubic) });
+    ring.value = withDelay(
+      260,
+      withTiming(1, { duration: 1400, easing: Easing.out(Easing.cubic) }),
     );
-    glowScale.value = withRepeat(
-      withTiming(1.08, { duration: 1800 }),
-      -1,
-      true,
+    word.value = withDelay(
+      560,
+      withTiming(1, { duration: 900, easing: Easing.out(Easing.cubic) }),
     );
-  }, [opacity, glowScale]);
+    twinkle.value = withDelay(
+      900,
+      withRepeat(withTiming(0.55, { duration: 1500 }), -1, true),
+    );
+  }, [star, ring, word, twinkle]);
 
-  const textStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-    textShadowRadius: 12 + (opacity.value - 0.6) * 20,
+  const coreStyle = useAnimatedStyle(() => ({
+    opacity: star.value * twinkle.value,
+    transform: [{ scale: 0.2 + star.value * 0.8 }],
   }));
 
-  const glowStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: glowScale.value }],
-    opacity: 0.15 + (opacity.value - 0.6) * 0.3,
+  const ringStyle = useAnimatedStyle(() => ({
+    opacity: (1 - ring.value) * 0.5,
+    transform: [{ scale: 0.1 + ring.value * 4.2 }],
+  }));
+
+  const wordStyle = useAnimatedStyle(() => ({
+    opacity: word.value,
+    transform: [{ translateY: (1 - word.value) * 14 }],
+  }));
+
+  const taglineStyle = useAnimatedStyle(() => ({
+    opacity: word.value * 0.6,
   }));
 
   if (!visible) return null;
 
   return (
-    <Animated.View exiting={FadeOut.duration(400)} style={styles.container}>
-      <LinearGradient
-        colors={['#1A1035', '#0F0A1A', '#050505']}
-        locations={[0, 0.4, 1]}
-        style={StyleSheet.absoluteFill}
-      />
+    <Animated.View exiting={FadeOut.duration(500)} style={styles.container}>
+      <View style={styles.center}>
+        <Animated.View style={[styles.ring, ringStyle]} pointerEvents="none" />
+        <Animated.View style={[styles.core, coreStyle]} pointerEvents="none" />
+      </View>
 
-      <Animated.View style={[styles.glowOrb, glowStyle]} />
-
-      <Animated.Text style={[styles.title, textStyle]}>
-        Nebulore
-      </Animated.Text>
-
-      <Text style={styles.tagline}>Scanning the cosmos</Text>
+      <View style={styles.wordWrap}>
+        <Animated.Text style={[styles.title, wordStyle]}>Nebulore</Animated.Text>
+        <Animated.Text style={[styles.tagline, taglineStyle]}>
+          First Light
+        </Animated.Text>
+      </View>
     </Animated.View>
   );
 }
@@ -60,33 +76,52 @@ export default function NebuloreSplash({ visible = true }) {
 const styles = StyleSheet.create({
   container: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#050505',
+    backgroundColor: C.abyss,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 1000,
   },
-  glowOrb: {
+  center: {
     position: 'absolute',
-    width: 280,
-    height: 280,
-    borderRadius: 140,
-    backgroundColor: '#6B4C9A',
+    top: '38%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  core: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    shadowColor: C.accentHi,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 22,
+  },
+  ring: {
+    position: 'absolute',
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    borderWidth: 1,
+    borderColor: C.accent,
+  },
+  wordWrap: {
+    position: 'absolute',
+    top: '54%',
+    alignItems: 'center',
   },
   title: {
-    fontFamily: 'Inter_700Bold',
-    fontSize: 42,
-    letterSpacing: 6,
-    color: '#FFFFFF',
-    textShadowColor: '#8B7CF6',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 16,
+    fontFamily: fonts.serifSemibold,
+    fontSize: 44,
+    letterSpacing: 1,
+    color: C.textPrimary,
   },
   tagline: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.35)',
-    letterSpacing: 2,
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    color: C.textTertiary,
+    letterSpacing: 4,
     textTransform: 'uppercase',
-    marginTop: 16,
+    marginTop: 14,
   },
 });

@@ -6,8 +6,10 @@ import { Flame, Sparkles, Trophy } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import CosmicRankBadge from '../components/CosmicRankBadge';
 import StatsRing from '../components/StatsRing';
+import CountUp from '../components/CountUp';
 import { CATEGORIES } from '../config/categories';
 import { getRankForCount, useStatsStore } from '../store/useStatsStore';
+import { C, fonts } from '../theme';
 
 function GlassCard({ children, style }) {
   return (
@@ -30,7 +32,7 @@ function MetricCard({ icon, value, label, accent }) {
       <View style={[styles.metricIcon, { backgroundColor: `${accent}1F` }]}>
         {icon}
       </View>
-      <Text style={styles.metricValue}>{value}</Text>
+      <CountUp value={value} style={styles.metricValue} />
       <Text style={styles.metricLabel}>{label}</Text>
     </GlassCard>
   );
@@ -104,6 +106,11 @@ export default function DashboardScreen() {
             </View>
 
             <CosmicRankBadge label={rank.current.label} color={rank.current.color} />
+
+            <View style={styles.totalBlock}>
+              <CountUp value={totalDeepDives} style={styles.totalValue} />
+              <Text style={styles.totalLabel}>Deep Dives Logged</Text>
+            </View>
 
             <View style={styles.progressTrack}>
               <View
@@ -200,10 +207,29 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   heading: {
+    fontFamily: fonts.serifSemibold,
+    fontSize: 32,
+    lineHeight: 38,
+    letterSpacing: -0.3,
+    color: C.textPrimary,
+  },
+  totalBlock: {
+    alignItems: 'center',
+    marginTop: 18,
+  },
+  totalValue: {
     fontFamily: 'Inter_700Bold',
-    fontSize: 30,
-    letterSpacing: -0.5,
-    color: '#FFFFFF',
+    fontSize: 44,
+    letterSpacing: -1,
+    color: C.textPrimary,
+  },
+  totalLabel: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 12,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    color: C.textTertiary,
+    marginTop: 2,
   },
   card: {
     borderRadius: 24,

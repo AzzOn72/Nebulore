@@ -11,7 +11,38 @@ import Animated, {
 import { useFactStore } from '../store/useFactStore';
 import { useUiStore } from '../store/useUiStore';
 
-export default function SavedFactItem({ fact, index }) {
+function escapeRegExp(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Renders `text` with case-insensitive matches of `query` lit in accent color.
+function Highlighted({ text, query, className, numberOfLines, accent }) {
+  const q = query?.trim();
+  if (!q) {
+    return (
+      <Text className={className} numberOfLines={numberOfLines}>
+        {text}
+      </Text>
+    );
+  }
+  const parts = text.split(new RegExp(`(${escapeRegExp(q)})`, 'ig'));
+  const lower = q.toLowerCase();
+  return (
+    <Text className={className} numberOfLines={numberOfLines}>
+      {parts.map((part, i) =>
+        part.toLowerCase() === lower ? (
+          <Text key={i} style={{ color: accent, backgroundColor: `${accent}24` }}>
+            {part}
+          </Text>
+        ) : (
+          part
+        ),
+      )}
+    </Text>
+  );
+}
+
+export default function SavedFactItem({ fact, index, query }) {
   const removeFact = useFactStore((state) => state.removeFact);
   const openDeepDive = useUiStore((state) => state.openDeepDive);
 
@@ -67,19 +98,21 @@ export default function SavedFactItem({ fact, index }) {
               </Text>
             </View>
 
-            <Text
-              className="mb-2 font-inter-semibold text-lg leading-6 text-white"
+            <Highlighted
+              text={fact.title}
+              query={query}
+              accent={fact.glow}
+              className="mb-2 font-serif-semibold text-xl leading-7 text-white"
               numberOfLines={2}
-            >
-              {fact.title}
-            </Text>
+            />
 
-            <Text
+            <Highlighted
+              text={fact.body}
+              query={query}
+              accent={fact.glow}
               className="font-inter text-sm leading-5 text-white/55"
               numberOfLines={3}
-            >
-              {fact.body}
-            </Text>
+            />
           </Pressable>
 
           <Pressable
