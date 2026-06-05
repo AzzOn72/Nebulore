@@ -18,18 +18,40 @@
 
 require('dotenv').config();
 
+// supabase-js initializes a realtime client (which needs a WebSocket) at
+// createClient time. Node < 22 has no global WebSocket, so polyfill it with
+// `ws`. This script only uses the REST API, so the socket is never opened.
+if (typeof globalThis.WebSocket === 'undefined') {
+  try {
+    globalThis.WebSocket = require('ws');
+  } catch (_) {
+    // `ws` not installed — fine on Node >= 22 which has a native WebSocket.
+  }
+}
+
 const { createClient } = require('@supabase/supabase-js');
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const GROQ_MODEL = 'llama3-8b-8192';
+// llama3-8b-8192 (requested) was decommissioned by Groq. We default to
+// llama-3.3-70b-versatile, which reliably produces premium long-form articles;
+// override with GROQ_MODEL (e.g. llama-3.1-8b-instant for the faster 8B model).
+const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
 const ARTICLES_PER_ROUND = 5;
-const DELAY_MS = 4000;
+// Output cap. Kept under Groq's free-tier per-request TPM limit (6000) while
+// still leaving room for 5 long articles. Override with GROQ_MAX_TOKENS.
+const MAX_TOKENS = Number.parseInt(process.env.GROQ_MAX_TOKENS, 10) || 5800;
+// Delay between rounds. Free tier (~6000 TPM) realistically allows ~1 round/min;
+// raise GENERATE_DELAY_MS on free tier to avoid rate limits.
+const DELAY_MS = Number.parseInt(process.env.GENERATE_DELAY_MS, 10) || 4000;
 
 const GROQ_PROMPT =
   'You are a world-class astrophysicist and science writer. Generate 5 highly ' +
   'detailed, mind-blowing, long-form articles about the universe, quantum ' +
   'mechanics, or space-time. Each article must be deeply explained, ' +
-  'fascinating, and at least 600 words long, structured in paragraphs. Output ' +
+  'fascinating, and at least 600 words long (this length requirement is ' +
+  'critical — do not write short articles). Within each description, separate ' +
+  'paragraphs with two newline characters (\\n\\n) so the article has 4-5 ' +
+  'substantial paragraphs. Output ' +
   'strictly as a JSON array of objects with \'title\' and \'description\' keys. ' +
   'Do not use markdown wrappers, just raw JSON.';
 
@@ -136,7 +158,7 @@ async function generateArticles(groqApiKey) {
         { role: 'user', content: 'Generate the 5 articles now as raw JSON.' },
       ],
       temperature: 0.9,
-      max_tokens: 8192,
+      max_tokens: MAX_TOKENS,
     }),
   });
 
