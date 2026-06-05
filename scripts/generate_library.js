@@ -1,44 +1,48 @@
 /**
- * Nebulore — "Holy Grail" Uncapped Library Generator (Phase 10)
+ * Nebulore — "Universal Free Swarm" Uncapped Library Generator (Phase 10.4)
  *
- * Standalone Node.js script (NOT React Native) that autonomously generates
- * highly premium, long-form facts/theories with the Google Gemini API (AI
- * Studio) and batch-inserts them into the Supabase `facts` table — without
- * ever repeating a topic.
+ * Standalone Node.js script that autonomously generates highly premium,
+ * long-form theories using the OpenRouter API, rotating through a swarm of
+ * 11 elite free models in a circular Round-Robin queue. Individual rate
+ * limits are bypassed by instant failover to the next model in the ring.
  *
- * Google Gemini free tier: 1,500 requests/day, 1M tokens/minute, 15 RPM.
- * At 10 articles/request with ~4.5s pacing we reach ~13 RPM → up to ~15,000
- * articles per day for free.
+ * Swarm Models (all 100% free via OpenRouter):
+ *   nvidia/nemotron-3-ultra-550b-a55b:free
+ *   nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
+ *   moonshotai/kimi-k2.6:free
+ *   google/gemma-4-26b-a4b-it:free
+ *   google/gemma-4-31b-it:free
+ *   nvidia/nemotron-3-super-120b-a12b:free
+ *   qwen/qwen3-next-80b-a3b-instruct:free
+ *   openai/gpt-oss-120b:free
+ *   z-ai/glm-4.5-air:free
+ *   meta-llama/llama-3.3-70b-instruct:free
+ *   nousresearch/hermes-3-llama-3.1-405b:free
  *
  * Architecture:
- *   1. Combinatorial Matrix — 5 categories x 10 extreme "Lenses". Each request
- *      randomly combines 1 Category + 1 Lens + a fresh crypto entropy seed so
- *      the LLM is forced into unexplored territory every single time.
- *   2. Short-Term Memory — the titles of the last 100 generated articles are
- *      fed back into the system prompt as a hard BANNED TOPICS blacklist.
- *   3. Auto-Healing — an infinite while(true) loop wraps the Gemini call and
- *      the Supabase batch insert in try/catch. 429 rate limits → sleep 60s →
- *      auto-resume. Bad-JSON / other errors → sleep 5s → continue. Never
- *      crashes; safe to leave unattended for days.
- *   4. Structured Output — responseMimeType "application/json" with a
- *      responseSchema guarantees valid JSON from Gemini, eliminating the
- *      markdown / malformed-JSON issues that plagued the Groq pipeline.
+ *   1. Round-Robin Swarm — 11 models in a circular queue. Each round of 5
+ *      articles advances the model index. On 429/503/404 the index instantly
+ *      advances to the next model with zero sleep.
+ *   2. Combinatorial Matrix — 5 categories x 10 extreme "Lenses". Each
+ *      request randomly combines 1 Category + 1 Lens + a fresh crypto
+ *      entropy seed so the LLM is forced into unexplored territory.
+ *   3. Short-Term Memory — titles of the last 100 generated articles are
+ *      fed back as a hard BANNED TOPICS blacklist.
+ *   4. Auto-Healing — infinite while(true) loop wraps the OpenRouter call
+ *      and Supabase batch insert in try/catch. Failover models never sleep;
+ *      only truly unrecoverable errors trigger a brief 5s cool-down.
  *
  * Usage:
- *   node scripts/generate_library.js            # runs forever (Ctrl+C to stop)
+ *   node scripts/generate_library.js   # runs forever (Ctrl+C to stop)
  *
  * Required environment variables (loaded from .env):
- *   SUPABASE_URL                 (or EXPO_PUBLIC_SUPABASE_URL)
- *   SUPABASE_SERVICE_ROLE_KEY    (preferred for inserts; or SUPABASE_KEY /
- *                                 EXPO_PUBLIC_SUPABASE_ANON_KEY as a fallback)
- *   GEMINI_API_KEY               (Google AI Studio key)
+ *   OPENROUTER_API_KEY               (OpenRouter API key)
+ *   SUPABASE_URL                     (or EXPO_PUBLIC_SUPABASE_URL)
+ *   SUPABASE_SERVICE_ROLE_KEY        (or SUPABASE_KEY / EXPO_PUBLIC_SUPABASE_ANON_KEY)
  *
  * Optional overrides:
- *   GEMINI_MODEL         (default: gemini-2.5-flash)
- *   ARTICLES_PER_ROUND   (default: 10)
- *   GENERATE_DELAY_MS    (default: 4500 — ~13 RPM, safely under Gemini's 15 RPM)
- *   RATE_LIMIT_SLEEP_MS  (default: 60000 — cool-down after a 429)
- *   MAX_OUTPUT_TOKENS     (default: 24000)
+ *   ARTICLES_PER_ROUND   (default: 5)
+ *   MAX_FAILOVER_RETRIES (default: 11 — full ring rotation before sleeping)
  */
 
 require('dotenv').config();
@@ -57,32 +61,56 @@ if (typeof globalThis.WebSocket === 'undefined') {
 }
 
 const { createClient } = require('@supabase/supabase-js');
-const {
-  GoogleGenerativeAI,
-  SchemaType,
-} = require('@google/generative-ai');
 
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+// ---------------------------------------------------------------------------
+// Model Swarm — Elite Round-Robin Pool
+// ---------------------------------------------------------------------------
+const MODEL_SWARM = [
+  'nvidia/nemotron-3-ultra-550b-a55b:free',
+  'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free',
+  'moonshotai/kimi-k2.6:free',
+  'google/gemma-4-26b-a4b-it:free',
+  'google/gemma-4-31b-it:free',
+  'nvidia/nemotron-3-super-120b-a12b:free',
+  'qwen/qwen3-next-80b-a3b-instruct:free',
+  'openai/gpt-oss-120b:free',
+  'z-ai/glm-4.5-air:free',
+  'meta-llama/llama-3.3-70b-instruct:free',
+  'nousresearch/hermes-3-llama-3.1-405b:free',
+];
+
+// Circular queue index — advances after every successful round and on failover.
+let modelIndex = 0;
+
+function nextModel() {
+  const model = MODEL_SWARM[modelIndex % MODEL_SWARM.length];
+  modelIndex += 1;
+  return model;
+}
+
+function modelShortName(id) {
+  // "nvidia/nemotron-3-ultra-550b-a55b:free" -> "nemotron-3-ultra-550b-a55b"
+  const slashIdx = id.indexOf('/');
+  const colonIdx = id.indexOf(':');
+  if (slashIdx !== -1 && colonIdx !== -1) return id.slice(slashIdx + 1, colonIdx);
+  if (slashIdx !== -1) return id.slice(slashIdx + 1);
+  return id;
+}
+
+// ---------------------------------------------------------------------------
+// Configuration
+// ---------------------------------------------------------------------------
 const ARTICLES_PER_ROUND =
-  Number.parseInt(process.env.ARTICLES_PER_ROUND, 10) || 10;
-const MAX_OUTPUT_TOKENS =
-  Number.parseInt(process.env.MAX_OUTPUT_TOKENS, 10) || 24000;
-// Gemini free tier allows 15 RPM. 4.5s pacing → ~13 RPM, safely under limit.
-const DELAY_MS =
-  Number.parseInt(process.env.GENERATE_DELAY_MS, 10) || 4500;
-// Cool-down applied when a 429 rate-limit error is caught.
-const RATE_LIMIT_SLEEP_MS =
-  Number.parseInt(process.env.RATE_LIMIT_SLEEP_MS, 10) || 60000;
-// How many recent titles to remember and ban from future generations.
+  Number.parseInt(process.env.ARTICLES_PER_ROUND, 10) || 5;
+const MAX_FAILOVER_RETRIES =
+  Number.parseInt(process.env.MAX_FAILOVER_RETRIES, 10) || MODEL_SWARM.length;
 const MEMORY_SIZE = 100;
 
-/**
- * The Combinatorial Matrix: 5 categories, each with 10 extreme "Lenses" /
- * perspectives. Randomly combining a category with a lens (plus a per-request
- * crypto entropy seed) yields an enormous, effectively non-repeating space of
- * premium topics. `key` must match the category keys used by the app
- * (src/config) so the mobile UI can filter and theme each fact correctly.
- */
+const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1/chat/completions';
+
+// ---------------------------------------------------------------------------
+// Combinatorial Matrix: 5 categories x 10 Lenses
+// ---------------------------------------------------------------------------
 const MATRIX = {
   cosmos: {
     label: 'Cosmos & Quantum Physics',
@@ -177,11 +205,6 @@ function pick(array) {
   return array[Math.floor(Math.random() * array.length)];
 }
 
-/**
- * Randomly select one category + one lens, and mint a fresh entropy seed. The
- * seed pushes the model into unexplored territory and guarantees that even an
- * identical category/lens pairing produces a different result each time.
- */
 function pickCombination() {
   const key = pick(CATEGORY_KEYS);
   const category = MATRIX[key];
@@ -190,11 +213,10 @@ function pickCombination() {
   return { key, category, lens, entropySeed };
 }
 
-/**
- * Build the system instruction: combinatorial topic + entropy seed + the BANNED
- * TOPICS blacklist drawn from short-term memory.
- */
-function buildSystemInstruction({ category, lens, entropySeed }, bannedTitles) {
+// ---------------------------------------------------------------------------
+// Prompt Builder
+// ---------------------------------------------------------------------------
+function buildSystemPrompt({ category, lens, entropySeed }, bannedTitles) {
   const blacklist = bannedTitles.length
     ? bannedTitles.map((t) => `- ${t}`).join('\n')
     : '(none yet)';
@@ -210,13 +232,15 @@ function buildSystemInstruction({ category, lens, entropySeed }, bannedTitles) {
     '',
     'Hard requirements:',
     `- You MUST return exactly ${ARTICLES_PER_ROUND} articles — no more, no fewer. Each MUST have a unique, non-overlapping topic.`,
-    '- Each description should be a substantial, fully developed essay (aim for 600-800 words) of 4-6 dense paragraphs with deep analysis, concrete mechanisms, and vivid detail. Never write a thin summary.',
-    '- Separate paragraphs with two newline characters (\\n\\n) so each piece reads as 4-6 substantial paragraphs.',
-    '- Tone: luxury, highly analytical, mind-blowing, precise, and richly detailed. No filler, no hedging, no clichés.',
-    '- Respond ONLY with a valid JSON array of objects with \'title\' and \'description\'. Do NOT include any markdown formatting like ```json or trailing text. The output must be directly parseable by JSON.parse().',
+    '- Each description MUST be a substantial, fully developed essay of at least 600 words, divided into 4-5 dense paragraphs separated by two newline characters (\\n\\n). Deep analysis, concrete mechanisms, vivid detail. Never write a thin summary.',
+    '- Tone: luxury, highly analytical, mind-blowing, precise, and richly detailed. No filler, no hedging, no cliches.',
+    '- Respond ONLY with a valid JSON array of objects with "title" and "description". Do NOT include any markdown formatting like ```json or trailing text. The output must be directly parseable by JSON.parse().',
   ].join('\n');
 }
 
+// ---------------------------------------------------------------------------
+// Environment helpers
+// ---------------------------------------------------------------------------
 function readEnv(...names) {
   for (const name of names) {
     const value = process.env[name];
@@ -232,64 +256,34 @@ function loadConfig() {
     'SUPABASE_KEY',
     'EXPO_PUBLIC_SUPABASE_ANON_KEY',
   );
-  const geminiApiKey = readEnv('GEMINI_API_KEY');
+  const openRouterApiKey = readEnv('OPENROUTER_API_KEY');
 
   const missing = [];
   if (!supabaseUrl) missing.push('SUPABASE_URL');
   if (!supabaseKey) missing.push('SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_KEY)');
-  if (!geminiApiKey) missing.push('GEMINI_API_KEY');
+  if (!openRouterApiKey) missing.push('OPENROUTER_API_KEY');
 
   if (missing.length) {
     throw new Error(
       `Missing required environment variables: ${missing.join(', ')}. ` +
-        'Add them to a .env file in the project root (see .env.example).',
+        'Add them to a .env file in the project root.',
     );
   }
 
-  return { supabaseUrl, supabaseKey, geminiApiKey };
+  return { supabaseUrl, supabaseKey, openRouterApiKey };
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/**
- * Initialize the Gemini generative model with structured JSON output schema.
- * The responseSchema guarantees valid JSON from Gemini, eliminating the
- * markdown / malformed-JSON issues that plagued the previous Groq pipeline.
- */
-function createGeminiModel(geminiApiKey) {
-  const genAI = new GoogleGenerativeAI(geminiApiKey);
-  return genAI.getGenerativeModel({
-    model: GEMINI_MODEL,
-    generationConfig: {
-      temperature: 1.0,
-      maxOutputTokens: MAX_OUTPUT_TOKENS,
-      responseMimeType: 'application/json',
-      responseSchema: {
-        type: SchemaType.ARRAY,
-        items: {
-          type: SchemaType.OBJECT,
-          properties: {
-            title: { type: SchemaType.STRING },
-            description: { type: SchemaType.STRING },
-          },
-          required: ['title', 'description'],
-        },
-      },
-    },
-  });
-}
-
-/**
- * Extract and validate the article array from the model response. With
- * structured output the response should always be valid JSON, but we keep a
- * robust fallback parser in case of unexpected formatting.
- */
+// ---------------------------------------------------------------------------
+// OpenRouter fetch with instant failover
+// ---------------------------------------------------------------------------
 function parseArticles(content) {
-  if (!content) throw new Error('Empty response from Gemini');
+  if (!content) throw new Error('Empty response from model');
 
   let text = content.trim();
 
-  // Strip code fences if the model somehow added them despite JSON mode.
+  // Strip code fences if the model added them.
   const fence = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
   if (fence) text = fence[1].trim();
 
@@ -304,7 +298,7 @@ function parseArticles(content) {
   const parsed = JSON.parse(text);
 
   if (!Array.isArray(parsed)) {
-    throw new Error('Gemini response was not a JSON array');
+    throw new Error('Response was not a JSON array');
   }
 
   const articles = parsed
@@ -322,38 +316,112 @@ function parseArticles(content) {
     }));
 
   if (!articles.length) {
-    throw new Error('Gemini response contained no valid {title, description}');
+    throw new Error('Response contained no valid {title, description}');
   }
 
   return articles;
 }
 
 /**
- * Generate articles using the Gemini model. Throws with a `status` property
- * of 429 when rate-limited so the loop can apply the long cool-down.
+ * Call the OpenRouter API for the given model. Returns parsed articles.
+ * Throws with a `status` property on HTTP-level failures so the caller can
+ * decide whether to failover.
  */
-async function generateArticles(model, combination, bannedTitles) {
-  const systemInstruction = buildSystemInstruction(combination, bannedTitles);
-
-  const result = await model.generateContent({
-    systemInstruction,
-    contents: [
-      {
-        role: 'user',
-        parts: [
-          {
-            text: `Generate ${ARTICLES_PER_ROUND} articles now as a raw JSON array.`,
-          },
-        ],
-      },
-    ],
+async function callOpenRouter(modelId, systemPrompt, openRouterApiKey) {
+  const response = await fetch(OPENROUTER_BASE_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${openRouterApiKey}`,
+      'HTTP-Referer': 'http://localhost:3000',
+      'X-Title': 'Nebulore Generator',
+    },
+    body: JSON.stringify({
+      model: modelId,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        {
+          role: 'user',
+          content: `Generate ${ARTICLES_PER_ROUND} articles now as a raw JSON array.`,
+        },
+      ],
+      temperature: 1.0,
+      max_tokens: 16000,
+    }),
   });
 
-  const text = result.response.text();
-  const articles = parseArticles(text);
-  return articles.map((a) => ({ ...a, category: combination.key }));
+  if (!response.ok) {
+    const err = new Error(
+      `OpenRouter ${response.status}: ${response.statusText}`,
+    );
+    err.status = response.status;
+    throw err;
+  }
+
+  const json = await response.json();
+
+  const content =
+    json.choices &&
+    json.choices[0] &&
+    json.choices[0].message &&
+    json.choices[0].message.content;
+
+  if (!content) {
+    throw new Error('No content in OpenRouter response');
+  }
+
+  return parseArticles(content);
 }
 
+/**
+ * Generate articles using the Round-Robin swarm with instant failover.
+ * On 429 (Rate Limit), 503 (Busy), or 404 (Not Found), instantly advance
+ * to the next model in the ring — zero sleep. Returns articles on success.
+ */
+async function generateWithSwarm(combination, bannedTitles, openRouterApiKey) {
+  const systemPrompt = buildSystemPrompt(combination, bannedTitles);
+  let lastError = null;
+
+  for (let attempt = 0; attempt < MAX_FAILOVER_RETRIES; attempt++) {
+    const modelId = nextModel();
+    const shortName = modelShortName(modelId);
+
+    try {
+      const articles = await callOpenRouter(
+        modelId,
+        systemPrompt,
+        openRouterApiKey,
+      );
+      return { articles, modelUsed: shortName };
+    } catch (error) {
+      lastError = error;
+      const status = error.status || 0;
+
+      if (status === 429 || status === 503 || status === 404) {
+        // Instant failover — no sleep, just advance to the next model.
+        console.warn(
+          `  [Failover] ${shortName} returned ${status}. Switching to next model...`,
+        );
+        continue;
+      }
+
+      // Other HTTP errors or parse failures — also try next model.
+      console.warn(
+        `  [Failover] ${shortName} error: ${error.message}. Trying next model...`,
+      );
+      continue;
+    }
+  }
+
+  // All models in the ring failed for this round.
+  throw new Error(
+    `All ${MAX_FAILOVER_RETRIES} models failed. Last error: ${lastError?.message}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Supabase insert
+// ---------------------------------------------------------------------------
 async function insertArticles(supabase, articles) {
   const { data, error } = await supabase
     .from('facts')
@@ -364,7 +432,10 @@ async function insertArticles(supabase, articles) {
     // If the category column doesn't exist yet, retry without it.
     if (error.message && error.message.includes("'category'")) {
       const withoutCat = articles.map(({ category: _, ...rest }) => rest);
-      const retry = await supabase.from('facts').insert(withoutCat).select('id');
+      const retry = await supabase
+        .from('facts')
+        .insert(withoutCat)
+        .select('id');
       if (retry.error) {
         throw new Error(`Supabase insert failed: ${retry.error.message}`);
       }
@@ -376,10 +447,9 @@ async function insertArticles(supabase, articles) {
   return data?.length ?? articles.length;
 }
 
-/**
- * Push new titles into short-term memory, keeping only the most recent
- * MEMORY_SIZE entries (used as the BANNED TOPICS blacklist).
- */
+// ---------------------------------------------------------------------------
+// Short-term memory
+// ---------------------------------------------------------------------------
 function rememberTitles(memory, titles) {
   for (const title of titles) memory.push(title);
   if (memory.length > MEMORY_SIZE) {
@@ -387,52 +457,45 @@ function rememberTitles(memory, titles) {
   }
 }
 
-/**
- * Detect whether an error is a 429 rate-limit. The Gemini SDK wraps HTTP
- * errors as GoogleGenerativeAIFetchError with a `.status` property, but we
- * also defensively match the error message for broader compatibility.
- */
-function isRateLimitError(error) {
-  if (error.status === 429) return true;
-  if (error.statusCode === 429) return true;
-  if (/429|rate.?limit|quota|too many requests|resource.*exhausted/i.test(error.message)) return true;
-  return false;
-}
-
+// ---------------------------------------------------------------------------
+// Main loop
+// ---------------------------------------------------------------------------
 async function main() {
-  const { supabaseUrl, supabaseKey, geminiApiKey } = loadConfig();
+  const { supabaseUrl, supabaseKey, openRouterApiKey } = loadConfig();
   const supabase = createClient(supabaseUrl, supabaseKey, {
     auth: { persistSession: false },
   });
-  const model = createGeminiModel(geminiApiKey);
 
-  console.log('Nebulore Gemini generator starting...');
-  console.log(
-    `Model: ${GEMINI_MODEL} | ${ARTICLES_PER_ROUND} articles/round | ` +
-      `pacing ${DELAY_MS}ms | memory ${MEMORY_SIZE} titles`,
-  );
+  console.log('='.repeat(70));
+  console.log(' Nebulore — Universal Free Swarm Engine (Phase 10.4)');
+  console.log('='.repeat(70));
+  console.log(`Swarm size: ${MODEL_SWARM.length} models | ${ARTICLES_PER_ROUND} articles/round`);
+  console.log(`Failover retries per round: ${MAX_FAILOVER_RETRIES}`);
+  console.log(`Memory: last ${MEMORY_SIZE} titles banned`);
   console.log('Running as an infinite loop. Press Ctrl+C to stop.\n');
 
-  // Short-term memory: titles of the last 100 generated articles.
   const recentTopicsMemory = [];
-
   let totalInserted = 0;
-  let iteration = 0;
+  let round = 0;
 
-  // Infinite, auto-healing loop — designed to run unattended for days.
   // eslint-disable-next-line no-constant-condition
   while (true) {
-    iteration += 1;
+    round += 1;
     const combination = pickCombination();
 
     try {
-      const articles = await generateArticles(
-        model,
+      const { articles, modelUsed } = await generateWithSwarm(
         combination,
         recentTopicsMemory,
+        openRouterApiKey,
       );
 
-      const inserted = await insertArticles(supabase, articles);
+      const withCategory = articles.map((a) => ({
+        ...a,
+        category: combination.key,
+      }));
+
+      const inserted = await insertArticles(supabase, withCategory);
       totalInserted += inserted;
       rememberTitles(
         recentTopicsMemory,
@@ -440,35 +503,39 @@ async function main() {
       );
 
       console.log(
-        `[#${iteration}] +${inserted} → "${articles[0].title}" ` +
-          `[${combination.category.label} | seed ${combination.entropySeed}] ` +
-          `(total ${totalInserted})`,
+        `[Round ${round}] [${modelUsed}] -> Success: Added ${inserted} theories. ` +
+          `(total: ${totalInserted})`,
       );
     } catch (error) {
-      if (isRateLimitError(error)) {
+      if (
+        error instanceof SyntaxError ||
+        /JSON|parse|no valid/i.test(error.message)
+      ) {
         console.warn(
-          `[#${iteration}] Rate limit hit, sleeping for ` +
-            `${Math.round(RATE_LIMIT_SLEEP_MS / 1000)} seconds...`,
-        );
-        await sleep(RATE_LIMIT_SLEEP_MS);
-        continue;
-      }
-
-      if (error instanceof SyntaxError || /JSON|parse|no valid/i.test(error.message)) {
-        console.warn(
-          `[#${iteration}] Bad JSON from Gemini (${error.message}); sleeping 5s and continuing.`,
+          `[Round ${round}] Bad JSON (${error.message}); sleeping 5s.`,
         );
         await sleep(5000);
         continue;
       }
 
+      if (/All.*models failed/i.test(error.message)) {
+        console.warn(
+          `[Round ${round}] Full swarm exhausted. Sleeping 30s before retry...`,
+        );
+        await sleep(30000);
+        continue;
+      }
+
       // Any other transient error (network, Supabase, etc.): log and continue.
-      console.error(`[#${iteration}] ${error.message}; sleeping 5s and continuing.`);
+      console.error(
+        `[Round ${round}] ${error.message}; sleeping 5s.`,
+      );
       await sleep(5000);
       continue;
     }
 
-    await sleep(DELAY_MS);
+    // Brief pacing between successful rounds to avoid hammering the API.
+    await sleep(2000);
   }
 }
 
