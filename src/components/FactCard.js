@@ -78,7 +78,7 @@ function FactCard({ fact }) {
             </Text>
 
             <View style={styles.exploreRow}>
-              <Text style={styles.exploreText}>Tap to explore</Text>
+              <Text style={styles.exploreText}>Tap to explore the cosmos...</Text>
               <ChevronDown size={16} color="rgba(229,229,229,0.35)" strokeWidth={2} />
             </View>
           </Animated.View>

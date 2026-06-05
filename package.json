@@ -9,6 +9,7 @@
     "@react-navigation/native": "^7.2.5",
     "@shopify/flash-list": "2.0.2",
     "@supabase/supabase-js": "^2.107.0",
+    "dotenv": "^17.4.2",
     "expo": "~54.0.8",
     "expo-blur": "~15.0.8",
     "expo-font": "~14.0.12",
@@ -33,7 +34,8 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "generate-library": "node scripts/generate_library.js"
   },
   "private": true,
   "devDependencies": {
