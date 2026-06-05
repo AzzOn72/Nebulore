@@ -47,6 +47,11 @@
 
 require('dotenv').config();
 
+const express = require('express');
+const app = express();
+
+app.get('/', (req, res) => res.send('Nebulore Generator is running!'));
+
 const crypto = require('crypto');
 
 // supabase-js initializes a realtime client (which needs a WebSocket) at
@@ -460,7 +465,7 @@ function rememberTitles(memory, titles) {
 // ---------------------------------------------------------------------------
 // Main loop
 // ---------------------------------------------------------------------------
-async function main() {
+async function startGenerator() {
   const { supabaseUrl, supabaseKey, openRouterApiKey } = loadConfig();
   const supabase = createClient(supabaseUrl, supabaseKey, {
     auth: { persistSession: false },
@@ -540,8 +545,12 @@ async function main() {
 }
 
 if (require.main === module) {
-  main().catch((error) => {
-    console.error(`Fatal: ${error.message}`);
-    process.exit(1);
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, () => {
+    console.log(`Health server listening on port ${PORT}`);
+    startGenerator().catch((error) => {
+      console.error(`Fatal: ${error.message}`);
+      process.exit(1);
+    });
   });
 }
