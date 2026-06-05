@@ -1,96 +1,135 @@
-import { memo, useState } from 'react';
+import { memo, useCallback, useState } from 'react';
 import { Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { ChevronDown } from 'lucide-react-native';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, {
+  FadeIn,
+  interpolate,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from 'react-native-reanimated';
 import DeepDiveModal from './DeepDiveModal';
 import { getTeaserHook } from '../utils/getTeaserHook';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
+const MAX_ROTATE_DEG = 6;
+const SPRING_CONFIG = { damping: 18, stiffness: 200, mass: 0.6 };
+
 function FactCard({ fact }) {
   const [deepDiveVisible, setDeepDiveVisible] = useState(false);
-
   const teaserHook = getTeaserHook(fact.body, 2);
 
-  const handleOpenDeepDive = () => {
+  const translateX = useSharedValue(0);
+
+  const panGesture = Gesture.Pan()
+    .activeOffsetX([-12, 12])
+    .failOffsetY([-14, 14])
+    .onUpdate((e) => {
+      translateX.value = e.translationX;
+    })
+    .onEnd(() => {
+      translateX.value = withSpring(0, SPRING_CONFIG);
+    });
+
+  const cardAnimatedStyle = useAnimatedStyle(() => {
+    const rotateY = interpolate(
+      translateX.value,
+      [-SCREEN_WIDTH / 2, 0, SCREEN_WIDTH / 2],
+      [-MAX_ROTATE_DEG, 0, MAX_ROTATE_DEG],
+      'clamp',
+    );
+    return {
+      transform: [{ perspective: 1200 }, { rotateY: `${rotateY}deg` }],
+    };
+  });
+
+  const handleOpenDeepDive = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setDeepDiveVisible(true);
-  };
+  }, []);
 
-  const handleCloseDeepDive = () => {
+  const handleCloseDeepDive = useCallback(() => {
     setDeepDiveVisible(false);
-  };
+  }, []);
 
   return (
-    <View style={{ width: SCREEN_WIDTH, height: SCREEN_HEIGHT }} className="bg-void">
-      <LinearGradient
-        colors={fact.accent}
-        locations={[0, 0.5, 1]}
-        start={{ x: 0.15, y: 0 }}
-        end={{ x: 0.85, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
-
-      <View
-        style={[
-          styles.glowOrb,
-          {
-            backgroundColor: fact.glow,
-            shadowColor: fact.glow,
-            top: SCREEN_HEIGHT * 0.08,
-            right: -SCREEN_WIDTH * 0.25,
-            width: SCREEN_WIDTH * 0.8,
-            height: SCREEN_WIDTH * 0.8,
-          },
-        ]}
-      />
-
-      <BlurView intensity={80} tint="dark" style={StyleSheet.absoluteFill} />
-
-      <LinearGradient
-        colors={['rgba(5,5,5,0.3)', 'rgba(5,5,5,0.7)', 'rgba(5,5,5,0.92)']}
-        locations={[0, 0.45, 1]}
-        style={StyleSheet.absoluteFill}
-      />
-
-      <Pressable
-        onPress={handleOpenDeepDive}
-        style={styles.teaserPressable}
-        accessibilityRole="button"
-        accessibilityLabel={`Explore ${fact.title}`}
+    <GestureDetector gesture={panGesture}>
+      <Animated.View
+        style={[{ width: SCREEN_WIDTH, height: SCREEN_HEIGHT }, cardAnimatedStyle]}
       >
-        <View style={styles.teaserContent}>
-          <Animated.View entering={FadeIn.duration(600)} style={styles.teaserInner}>
-            <View style={styles.categoryRow}>
-              <View style={[styles.categoryDot, { backgroundColor: fact.glow }]} />
-              <Text style={styles.category}>{fact.category}</Text>
-            </View>
+        <View style={StyleSheet.absoluteFill} className="bg-void">
+          <LinearGradient
+            colors={fact.accent}
+            locations={[0, 0.5, 1]}
+            start={{ x: 0.15, y: 0 }}
+            end={{ x: 0.85, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
 
-            <Text style={styles.title}>{fact.title}</Text>
+          <View
+            style={[
+              styles.glowOrb,
+              {
+                backgroundColor: fact.glow,
+                shadowColor: fact.glow,
+                top: SCREEN_HEIGHT * 0.08,
+                right: -SCREEN_WIDTH * 0.25,
+                width: SCREEN_WIDTH * 0.8,
+                height: SCREEN_WIDTH * 0.8,
+              },
+            ]}
+          />
 
-            <View style={styles.hookDivider} />
+          <BlurView intensity={80} tint="dark" style={StyleSheet.absoluteFill} />
 
-            <Text style={styles.hook} numberOfLines={2}>
-              {teaserHook}
-            </Text>
-
-            <View style={styles.exploreRow}>
-              <Text style={styles.exploreText}>Tap to explore</Text>
-              <ChevronDown size={16} color="rgba(229,229,229,0.35)" strokeWidth={2} />
-            </View>
-          </Animated.View>
+          <LinearGradient
+            colors={['rgba(5,5,5,0.3)', 'rgba(5,5,5,0.7)', 'rgba(5,5,5,0.92)']}
+            locations={[0, 0.45, 1]}
+            style={StyleSheet.absoluteFill}
+          />
         </View>
-      </Pressable>
 
-      <DeepDiveModal
-        visible={deepDiveVisible}
-        fact={fact}
-        onClose={handleCloseDeepDive}
-      />
-    </View>
+        <Pressable
+          onPress={handleOpenDeepDive}
+          style={styles.teaserPressable}
+          accessibilityRole="button"
+          accessibilityLabel={`Explore ${fact.title}`}
+        >
+          <View style={styles.teaserContent}>
+            <Animated.View entering={FadeIn.duration(600)} style={styles.teaserInner}>
+              <View style={styles.categoryRow}>
+                <View style={[styles.categoryDot, { backgroundColor: fact.glow }]} />
+                <Text style={styles.category}>{fact.category}</Text>
+              </View>
+
+              <Text style={styles.title}>{fact.title}</Text>
+
+              <View style={styles.hookDivider} />
+
+              <Text style={styles.hook} numberOfLines={2}>
+                {teaserHook}
+              </Text>
+
+              <View style={styles.exploreRow}>
+                <Text style={styles.exploreText}>Tap to explore the cosmos...</Text>
+                <ChevronDown size={16} color="rgba(229,229,229,0.35)" strokeWidth={2} />
+              </View>
+            </Animated.View>
+          </View>
+        </Pressable>
+
+        <DeepDiveModal
+          visible={deepDiveVisible}
+          fact={fact}
+          onClose={handleCloseDeepDive}
+        />
+      </Animated.View>
+    </GestureDetector>
   );
 }
 

@@ -14,6 +14,7 @@ import {
 } from '@expo-google-fonts/inter';
 import * as SplashScreen from 'expo-splash-screen';
 import NebuloreSplash from './src/components/NebuloreSplash';
+import SupernovaBackground from './src/components/SupernovaBackground';
 import { ToastProvider } from './src/context/ToastContext';
 import AppNavigator from './src/navigation/AppNavigator';
 import { useFactStore } from './src/store/useFactStore';
@@ -62,6 +63,7 @@ export default function App() {
       <SafeAreaProvider>
         <ToastProvider>
           <StatusBar style="light" />
+          <SupernovaBackground />
           {appReady && (
             <Animated.View entering={FadeIn.duration(400)} style={styles.root}>
               <AppNavigator />

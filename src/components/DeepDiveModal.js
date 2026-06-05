@@ -10,7 +10,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { Bookmark, ChevronLeft, Share2 } from 'lucide-react-native';
-import Animated, { FadeIn, SlideInRight, SlideOutRight } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut, ZoomIn, ZoomOut } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFactStore } from '../store/useFactStore';
 import { formatShareMessage } from '../utils/formatShareMessage';
@@ -78,8 +78,8 @@ export default function DeepDiveModal({ visible, fact, onClose }) {
       onRequestClose={handleClose}
     >
       <Animated.View
-        entering={SlideInRight.springify().damping(22).stiffness(180)}
-        exiting={SlideOutRight.duration(280)}
+        entering={ZoomIn.springify().damping(20).stiffness(160)}
+        exiting={FadeOut.duration(200).withInitialValues({ opacity: 1 })}
         style={[styles.container, { paddingTop: insets.top }]}
       >
         <LinearGradient
