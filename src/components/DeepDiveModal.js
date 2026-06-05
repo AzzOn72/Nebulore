@@ -1,7 +1,7 @@
+import { useState } from 'react';
 import {
   Modal,
   Pressable,
-  ScrollView,
   Share,
   StyleSheet,
   Text,
@@ -9,12 +9,24 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import { Bookmark, ChevronLeft, Headphones, Share2, Square } from 'lucide-react-native';
-import Animated, { FadeIn, FadeOut, ZoomIn, ZoomOut } from 'react-native-reanimated';
+import { Bookmark, ChevronLeft, Share2 } from 'lucide-react-native';
+import Animated, {
+  FadeIn,
+  FadeOut,
+  ZoomIn,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useSharedValue,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import NeuralSyncPlayer from './NeuralSyncPlayer';
+import PressableScale from './PressableScale';
 import { useFactStore } from '../store/useFactStore';
 import { useNeuralSync } from '../hooks/useNeuralSync';
 import { formatShareMessage } from '../utils/formatShareMessage';
+import { C, type as T, radii, space } from '../theme';
+
+const AnimatedScrollView = Animated.ScrollView;
 
 function Paragraphs({ text }) {
   const blocks = text.split(/\n\n+/).filter(Boolean);
@@ -41,6 +53,20 @@ export default function DeepDiveModal({ visible, fact, onClose }) {
   const markSeen = useFactStore((state) => state.markSeen);
 
   const neural = useNeuralSync(fact?.body ?? '');
+
+  const scrollY = useSharedValue(0);
+  const [scrollSpan, setScrollSpan] = useState(1);
+
+  const onScroll = useAnimatedScrollHandler({
+    onScroll: (e) => {
+      scrollY.value = e.contentOffset.y;
+    },
+  });
+
+  const progressStyle = useAnimatedStyle(() => {
+    const p = Math.min(Math.max(scrollY.value / scrollSpan, 0), 1);
+    return { height: `${p * 100}%` };
+  });
 
   const handleClose = () => {
     if (fact) {
@@ -87,13 +113,13 @@ export default function DeepDiveModal({ visible, fact, onClose }) {
       onRequestClose={handleClose}
     >
       <Animated.View
-        entering={ZoomIn.springify().damping(20).stiffness(160)}
-        exiting={FadeOut.duration(200).withInitialValues({ opacity: 1 })}
+        entering={ZoomIn.springify().damping(22).stiffness(140).mass(1.1)}
+        exiting={FadeOut.duration(220).withInitialValues({ opacity: 1 })}
         style={[styles.container, { paddingTop: insets.top }]}
       >
         <LinearGradient
-          colors={['#0A0A0A', '#050505', '#050505']}
-          locations={[0, 0.3, 1]}
+          colors={[`${fact.glow}14`, '#050505', '#000000']}
+          locations={[0, 0.32, 1]}
           style={StyleSheet.absoluteFill}
         />
 
@@ -105,22 +131,34 @@ export default function DeepDiveModal({ visible, fact, onClose }) {
             accessibilityRole="button"
             accessibilityLabel="Close"
           >
-            <ChevronLeft size={22} color="#E5E5E5" strokeWidth={2} />
+            <ChevronLeft size={22} color={C.textPrimary} strokeWidth={2} />
             <Text style={styles.backLabel}>Back</Text>
           </Pressable>
 
-          <Pressable onPress={handleShare} hitSlop={12} style={styles.iconButton}>
-            <Share2 size={20} color="rgba(229,229,229,0.6)" strokeWidth={1.75} />
-          </Pressable>
+          <PressableScale onPress={handleShare} hitSlop={12} style={styles.iconButton}>
+            <Share2 size={20} color={C.textSecondary} strokeWidth={1.75} />
+          </PressableScale>
         </View>
 
-        <ScrollView
+        {/* Reading-progress ray — a light ray reaching its end. */}
+        <View style={[styles.progressTrack, { top: insets.top + 70 }]}>
+          <Animated.View
+            style={[styles.progressFill, { backgroundColor: fact.glow }, progressStyle]}
+          />
+        </View>
+
+        <AnimatedScrollView
           style={styles.scroll}
           contentContainerStyle={[
             styles.scrollContent,
-            { paddingBottom: insets.bottom + 120 },
+            { paddingBottom: insets.bottom + 200 },
           ]}
           showsVerticalScrollIndicator={false}
+          scrollEventThrottle={16}
+          onScroll={onScroll}
+          onContentSizeChange={(_, h) => {
+            setScrollSpan(Math.max(h - 600, 1));
+          }}
         >
           <Animated.View entering={FadeIn.duration(500).delay(120)}>
             <View style={styles.categoryRow}>
@@ -134,49 +172,36 @@ export default function DeepDiveModal({ visible, fact, onClose }) {
 
             <Paragraphs text={fact.body} />
           </Animated.View>
-        </ScrollView>
+        </AnimatedScrollView>
 
         <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
           <LinearGradient
-            colors={['transparent', 'rgba(5,5,5,0.95)', '#050505']}
+            colors={['transparent', 'rgba(0,0,0,0.95)', '#000000']}
             style={styles.footerGradient}
             pointerEvents="none"
           />
 
-          <View style={styles.actionRow}>
-            <Pressable
-              onPress={handleListen}
-              accessibilityRole="button"
-              accessibilityLabel={neural.isPlaying ? 'Stop narration' : 'Listen to article'}
-              style={[styles.listenButton, neural.isPlaying && styles.listenButtonActive]}
-            >
-              {neural.isPlaying ? (
-                <Square size={18} color="#C4B5FD" fill="#C4B5FD" strokeWidth={1.75} />
-              ) : (
-                <Headphones size={20} color="#E5E5E5" strokeWidth={1.75} />
-              )}
-              <Text
-                style={[styles.listenLabel, neural.isPlaying && styles.listenLabelActive]}
-              >
-                {neural.isPlaying ? 'Stop' : 'Listen'}
-              </Text>
-            </Pressable>
+          <NeuralSyncPlayer
+            isPlaying={neural.isPlaying}
+            onToggle={handleListen}
+            speed={neural.speed}
+            onCycleSpeed={neural.cycleSpeed}
+          />
 
-            <Pressable
-              onPress={handleSave}
-              style={[styles.saveButton, isSaved && styles.saveButtonActive]}
-            >
-              <Bookmark
-                size={20}
-                color={isSaved ? '#C4B5FD' : '#E5E5E5'}
-                fill={isSaved ? '#C4B5FD' : 'transparent'}
-                strokeWidth={1.75}
-              />
-              <Text style={[styles.saveLabel, isSaved && styles.saveLabelActive]}>
-                {isSaved ? 'Saved' : 'Save to Library'}
-              </Text>
-            </Pressable>
-          </View>
+          <PressableScale
+            onPress={handleSave}
+            style={[styles.saveButton, isSaved && styles.saveButtonActive]}
+          >
+            <Bookmark
+              size={19}
+              color={isSaved ? C.accentHi : C.textPrimary}
+              fill={isSaved ? C.accentHi : 'transparent'}
+              strokeWidth={1.75}
+            />
+            <Text style={[styles.saveLabel, isSaved && styles.saveLabelActive]}>
+              {isSaved ? 'Saved to Library' : 'Save to Library'}
+            </Text>
+          </PressableScale>
         </View>
       </Animated.View>
     </Modal>
@@ -186,14 +211,14 @@ export default function DeepDiveModal({ visible, fact, onClose }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#050505',
+    backgroundColor: '#000000',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
+    paddingHorizontal: space[5],
+    paddingVertical: space[3],
   },
   backButton: {
     flexDirection: 'row',
@@ -205,7 +230,7 @@ const styles = StyleSheet.create({
   backLabel: {
     fontFamily: 'Inter_500Medium',
     fontSize: 16,
-    color: '#E5E5E5',
+    color: C.textPrimary,
     letterSpacing: 0.3,
   },
   iconButton: {
@@ -216,11 +241,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.06)',
   },
+  progressTrack: {
+    position: 'absolute',
+    right: 10,
+    bottom: 220,
+    width: 2,
+    borderRadius: 1,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    overflow: 'hidden',
+  },
+  progressFill: {
+    width: 2,
+    borderRadius: 1,
+  },
   scroll: {
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: 28,
+    paddingHorizontal: space[6],
     paddingTop: 8,
   },
   categoryRow: {
@@ -235,104 +273,67 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
   category: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 11,
-    letterSpacing: 3,
-    textTransform: 'uppercase',
-    color: 'rgba(229,229,229,0.4)',
+    ...T.eyebrow,
+    color: C.textTertiary,
   },
   title: {
-    fontFamily: 'Inter_700Bold',
-    fontSize: 32,
-    lineHeight: 40,
-    letterSpacing: -0.5,
-    color: '#E5E5E5',
+    ...T.h1,
+    fontSize: 34,
+    lineHeight: 42,
+    color: C.textPrimary,
     marginBottom: 28,
   },
   divider: {
     width: 48,
     height: 1,
-    backgroundColor: 'rgba(229,229,229,0.15)',
+    backgroundColor: C.hairlineLum,
     marginBottom: 32,
   },
   paragraph: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 17,
-    lineHeight: 27.2,
-    color: '#E5E5E5',
-    letterSpacing: 0.2,
+    ...T.readBody,
+    color: C.textPrimary,
   },
   paragraphSpaced: {
-    marginBottom: 24,
+    marginBottom: 20,
   },
   footer: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    paddingHorizontal: 24,
-    paddingTop: 16,
+    paddingHorizontal: space[6],
+    paddingTop: space[4],
+    gap: 12,
   },
   footerGradient: {
     position: 'absolute',
     left: 0,
     right: 0,
-    top: -40,
-    height: 40,
-  },
-  actionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  listenButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 16,
-    paddingHorizontal: 22,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'rgba(229,229,229,0.12)',
-    backgroundColor: 'rgba(255,255,255,0.06)',
-  },
-  listenButtonActive: {
-    borderColor: 'rgba(139,124,246,0.4)',
-    backgroundColor: 'rgba(139,124,246,0.12)',
-  },
-  listenLabel: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 15,
-    color: '#E5E5E5',
-    letterSpacing: 0.3,
-  },
-  listenLabelActive: {
-    color: '#C4B5FD',
+    top: -48,
+    height: 48,
   },
   saveButton: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 10,
     paddingVertical: 16,
-    borderRadius: 999,
+    borderRadius: radii.pill,
     borderWidth: 1,
-    borderColor: 'rgba(229,229,229,0.12)',
+    borderColor: C.hairlineLum,
     backgroundColor: 'rgba(255,255,255,0.06)',
   },
   saveButtonActive: {
-    borderColor: 'rgba(139,124,246,0.4)',
-    backgroundColor: 'rgba(139,124,246,0.12)',
+    borderColor: 'rgba(196,181,253,0.45)',
+    backgroundColor: 'rgba(139,124,246,0.14)',
   },
   saveLabel: {
     fontFamily: 'Inter_600SemiBold',
     fontSize: 15,
-    color: '#E5E5E5',
+    color: C.textPrimary,
     letterSpacing: 0.3,
   },
   saveLabelActive: {
-    color: '#C4B5FD',
+    color: C.accentHi,
   },
 });

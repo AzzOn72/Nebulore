@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, Dimensions, StyleSheet, Text, View } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { BlurView } from 'expo-blur';
@@ -28,6 +28,7 @@ export default function FeedScreen() {
   const insets = useSafeAreaInsets();
   const cardHeight = SCREEN_HEIGHT;
   const currentIndexRef = useRef(0);
+  const [activeIndex, setActiveIndex] = useState(0);
 
   const facts = useFactsStore((state) => state.facts);
   const error = useFactsStore((state) => state.error);
@@ -40,8 +41,8 @@ export default function FeedScreen() {
   const isOnline = useConnectivityStore((state) => state.isOnline);
 
   const renderItem = useCallback(
-    ({ item }) => <FactCard fact={item} />,
-    [],
+    ({ item, index }) => <FactCard fact={item} isActive={index === activeIndex} />,
+    [activeIndex],
   );
 
   const keyExtractor = useCallback((item) => item.id, []);
@@ -65,6 +66,7 @@ export default function FeedScreen() {
         }
 
         currentIndexRef.current = newIndex;
+        setActiveIndex(newIndex);
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
         if (hasMore && facts.length - newIndex <= LOAD_MORE_THRESHOLD) {

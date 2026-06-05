@@ -39,10 +39,14 @@ async function pickBestEnglishVoice() {
  * while a subtle looping ambient drone plays underneath at 15% volume. The
  * ambient track fades out smoothly when narration ends or is stopped.
  */
+const SPEEDS = [1, 1.25, 1.5, 0.75];
+
 export function useNeuralSync(text) {
   const player = useAudioPlayer(AMBIENT_SOURCE);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [speedIndex, setSpeedIndex] = useState(0);
   const fadeRef = useRef(null);
+  const speedRef = useRef(1);
 
   const clearFade = useCallback(() => {
     if (fadeRef.current) {
@@ -95,12 +99,13 @@ export function useNeuralSync(text) {
 
     const voiceId = await pickBestEnglishVoice();
     setIsPlaying(true);
+    const baseRate = Platform.OS === 'ios' ? 0.48 : 0.96;
     Speech.stop();
     Speech.speak(text, {
       language: 'en-US',
       voice: voiceId || undefined,
       pitch: 1.02,
-      rate: Platform.OS === 'ios' ? 0.48 : 0.96,
+      rate: baseRate * speedRef.current,
       onDone: () => stop(),
       onError: () => stop(),
     });
@@ -110,6 +115,17 @@ export function useNeuralSync(text) {
     if (isPlaying) stop();
     else start();
   }, [isPlaying, start, stop]);
+
+  const cycleSpeed = useCallback(() => {
+    const nextIndex = (speedIndex + 1) % SPEEDS.length;
+    speedRef.current = SPEEDS[nextIndex];
+    setSpeedIndex(nextIndex);
+    // If currently narrating, restart at the new rate.
+    if (isPlaying) {
+      Speech.stop();
+      start();
+    }
+  }, [speedIndex, isPlaying, start]);
 
   useEffect(
     () => () => {
@@ -124,5 +140,5 @@ export function useNeuralSync(text) {
     [player, clearFade],
   );
 
-  return { isPlaying, toggle, stop };
+  return { isPlaying, toggle, stop, speed: SPEEDS[speedIndex], cycleSpeed };
 }

@@ -1,52 +1,67 @@
 import { memo, useCallback } from 'react';
 import { Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
-import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { ChevronDown } from 'lucide-react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   FadeIn,
-  interpolate,
   useAnimatedStyle,
+  useFrameCallback,
   useSharedValue,
-  withSpring,
 } from 'react-native-reanimated';
+import NebulaField from './skia/NebulaField';
+import GlassSurface from './GlassSurface';
 import { getTeaserHook } from '../utils/getTeaserHook';
 import { useUiStore } from '../store/useUiStore';
+import { useGyro } from '../hooks/useGyro';
+import { C, type as T, radii, space } from '../theme';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-const MAX_ROTATE_DEG = 6;
-const SPRING_CONFIG = { damping: 18, stiffness: 200, mass: 0.6 };
+const MAX_TILT_DEG = 4;
+const TILT_SENS = 2.2;
+const TILT_DECAY = 0.9;
 
-function FactCard({ fact }) {
+function clampWorklet(v, min, max) {
+  'worklet';
+  return Math.min(Math.max(v, min), max);
+}
+
+function FactCard({ fact, isActive = false }) {
   const openDeepDive = useUiStore((state) => state.openDeepDive);
   const teaserHook = getTeaserHook(fact.body, 2);
 
-  const translateX = useSharedValue(0);
+  const { gyroX, gyroY } = useGyro();
+  const tiltX = useSharedValue(0);
+  const tiltY = useSharedValue(0);
 
-  const panGesture = Gesture.Pan()
-    .activeOffsetX([-12, 12])
-    .failOffsetY([-14, 14])
-    .onUpdate((e) => {
-      translateX.value = e.translationX;
-    })
-    .onEnd(() => {
-      translateX.value = withSpring(0, SPRING_CONFIG);
-    });
-
-  const cardAnimatedStyle = useAnimatedStyle(() => {
-    const rotateY = interpolate(
-      translateX.value,
-      [-SCREEN_WIDTH / 2, 0, SCREEN_WIDTH / 2],
-      [-MAX_ROTATE_DEG, 0, MAX_ROTATE_DEG],
-      'clamp',
+  // Gyro-driven 3D tilt (leaky integrator, clamped). Reinforces depth instead
+  // of competing with the vertical paging gesture.
+  useFrameCallback(() => {
+    if (!isActive) {
+      tiltX.value *= TILT_DECAY;
+      tiltY.value *= TILT_DECAY;
+      return;
+    }
+    tiltX.value = clampWorklet(
+      (tiltX.value + gyroX.value * TILT_SENS) * TILT_DECAY,
+      -MAX_TILT_DEG,
+      MAX_TILT_DEG,
     );
-    return {
-      transform: [{ perspective: 1200 }, { rotateY: `${rotateY}deg` }],
-    };
+    tiltY.value = clampWorklet(
+      (tiltY.value + gyroY.value * TILT_SENS) * TILT_DECAY,
+      -MAX_TILT_DEG,
+      MAX_TILT_DEG,
+    );
   });
+
+  const cardAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { perspective: 1200 },
+      { rotateX: `${tiltX.value}deg` },
+      { rotateY: `${tiltY.value}deg` },
+    ],
+  }));
 
   const handleOpenDeepDive = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -54,107 +69,78 @@ function FactCard({ fact }) {
   }, [openDeepDive, fact]);
 
   return (
-    <GestureDetector gesture={panGesture}>
-      <Animated.View
-        style={[{ width: SCREEN_WIDTH, height: SCREEN_HEIGHT }, cardAnimatedStyle]}
+    <Animated.View
+      style={[{ width: SCREEN_WIDTH, height: SCREEN_HEIGHT }, cardAnimatedStyle]}
+    >
+      <View style={StyleSheet.absoluteFill}>
+        <NebulaField
+          mesh={fact.mesh}
+          width={SCREEN_WIDTH}
+          height={SCREEN_HEIGHT}
+          animated={isActive}
+        />
+
+        {/* Darkening scrim — protects legibility over the nebula. */}
+        <LinearGradient
+          colors={['rgba(0,0,0,0.15)', 'rgba(0,0,0,0.55)', 'rgba(0,0,0,0.92)']}
+          locations={[0, 0.45, 1]}
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
+        />
+      </View>
+
+      <Pressable
+        onPress={handleOpenDeepDive}
+        style={styles.teaserPressable}
+        accessibilityRole="button"
+        accessibilityLabel={`Explore ${fact.title}`}
       >
-        <View style={StyleSheet.absoluteFill} className="bg-void">
-          <LinearGradient
-            colors={fact.accent}
-            locations={[0, 0.5, 1]}
-            start={{ x: 0.15, y: 0 }}
-            end={{ x: 0.85, y: 1 }}
-            style={StyleSheet.absoluteFill}
-          />
+        <GlassSurface variant="thick" style={styles.teaserContent}>
+          <Animated.View entering={FadeIn.duration(600)} style={styles.teaserInner}>
+            <View style={styles.categoryRow}>
+              <View style={[styles.categoryDot, { backgroundColor: fact.glow }]} />
+              <Text style={styles.category}>{fact.category}</Text>
+            </View>
 
-          <View
-            style={[
-              styles.glowOrb,
-              {
-                backgroundColor: fact.glow,
-                shadowColor: fact.glow,
-                top: SCREEN_HEIGHT * 0.08,
-                right: -SCREEN_WIDTH * 0.25,
-                width: SCREEN_WIDTH * 0.8,
-                height: SCREEN_WIDTH * 0.8,
-              },
-            ]}
-          />
+            <Text style={styles.title}>{fact.title}</Text>
 
-          <BlurView intensity={80} tint="dark" style={StyleSheet.absoluteFill} />
+            <View style={styles.hookDivider} />
 
-          <LinearGradient
-            colors={['rgba(5,5,5,0.3)', 'rgba(5,5,5,0.7)', 'rgba(5,5,5,0.92)']}
-            locations={[0, 0.45, 1]}
-            style={StyleSheet.absoluteFill}
-          />
-        </View>
+            <Text style={styles.hook} numberOfLines={2}>
+              {teaserHook}
+            </Text>
 
-        <Pressable
-          onPress={handleOpenDeepDive}
-          style={styles.teaserPressable}
-          accessibilityRole="button"
-          accessibilityLabel={`Explore ${fact.title}`}
-        >
-          <View style={styles.teaserContent}>
-            <Animated.View entering={FadeIn.duration(600)} style={styles.teaserInner}>
-              <View style={styles.categoryRow}>
-                <View style={[styles.categoryDot, { backgroundColor: fact.glow }]} />
-                <Text style={styles.category}>{fact.category}</Text>
-              </View>
-
-              <Text style={styles.title}>{fact.title}</Text>
-
-              <View style={styles.hookDivider} />
-
-              <Text style={styles.hook} numberOfLines={2}>
-                {teaserHook}
-              </Text>
-
-              <View style={styles.exploreRow}>
-                <Text style={styles.exploreText}>Tap to explore the cosmos...</Text>
-                <ChevronDown size={16} color="rgba(229,229,229,0.35)" strokeWidth={2} />
-              </View>
-            </Animated.View>
-          </View>
-        </Pressable>
-      </Animated.View>
-    </GestureDetector>
+            <View style={styles.exploreRow}>
+              <Text style={styles.exploreText}>Tap to explore the cosmos</Text>
+              <ChevronDown size={16} color={C.textTertiary} strokeWidth={2} />
+            </View>
+          </Animated.View>
+        </GlassSurface>
+      </Pressable>
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
-  glowOrb: {
-    position: 'absolute',
-    borderRadius: 9999,
-    opacity: 0.25,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.9,
-    shadowRadius: 100,
-  },
   teaserPressable: {
     flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 28,
-    paddingBottom: 140,
+    justifyContent: 'flex-end',
+    paddingHorizontal: space[5],
+    paddingBottom: 150,
     paddingTop: 80,
   },
   teaserContent: {
-    borderRadius: 28,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: radii.card,
   },
   teaserInner: {
-    paddingHorizontal: 32,
-    paddingVertical: 40,
-    backgroundColor: 'rgba(255,255,255,0.04)',
+    paddingHorizontal: 30,
+    paddingVertical: 36,
   },
   categoryRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 20,
+    marginBottom: 18,
   },
   categoryDot: {
     width: 6,
@@ -162,44 +148,34 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
   category: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 11,
-    letterSpacing: 3,
-    textTransform: 'uppercase',
-    color: 'rgba(229,229,229,0.4)',
+    ...T.eyebrow,
+    color: C.textTertiary,
   },
   title: {
-    fontFamily: 'Inter_700Bold',
-    fontSize: 30,
-    lineHeight: 38,
-    letterSpacing: -0.3,
-    color: '#E5E5E5',
-    marginBottom: 20,
+    ...T.titleCard,
+    color: C.textPrimary,
+    marginBottom: 18,
   },
   hookDivider: {
     width: 32,
     height: 1,
-    backgroundColor: 'rgba(229,229,229,0.12)',
-    marginBottom: 20,
+    backgroundColor: C.hairlineLum,
+    marginBottom: 18,
   },
   hook: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 16,
-    lineHeight: 26,
-    color: 'rgba(229,229,229,0.55)',
-    letterSpacing: 0.15,
+    ...T.body,
+    color: C.textSecondary,
   },
   exploreRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginTop: 28,
+    marginTop: 26,
   },
   exploreText: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 13,
+    ...T.label,
     letterSpacing: 1.5,
-    color: 'rgba(229,229,229,0.35)',
+    color: C.textTertiary,
   },
 });
 
@@ -208,5 +184,6 @@ export default memo(
   (prev, next) =>
     prev.fact.id === next.fact.id &&
     prev.fact.title === next.fact.title &&
-    prev.fact.body === next.fact.body,
+    prev.fact.body === next.fact.body &&
+    prev.isActive === next.isActive,
 );
