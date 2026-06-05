@@ -1,0 +1,42 @@
+export const mockFacts = [
+  {
+    id: '1',
+    category: 'Light & Time',
+    title: 'The Sun You See Is Already Gone',
+    body: 'When you look at the Sun, you are not seeing it as it is right now—you are seeing it as it was 8 minutes and 20 seconds ago. Light travels at 299,792 km/s, yet even at that staggering speed, the 150 million kilometers between Earth and the Sun demand time. Every sunrise is a message from the past, written in photons that began their journey before you took your last breath.',
+    accent: ['#1A0A2E', '#2D1B69', '#050505'],
+    glow: '#8B7CF6',
+  },
+  {
+    id: '2',
+    category: 'Quantum Reality',
+    title: 'You Are Mostly Empty Space',
+    body: 'If an atom were scaled to the size of a football stadium, its nucleus would be a single grape sitting at midfield—and the electrons would be tiny specks orbiting somewhere in the upper deck. You feel solid, but you are 99.9999999% empty space. The illusion of matter is held together by electromagnetic forces so powerful they convince your nerves that the void is stone.',
+    accent: ['#0A1628', '#1E3A5F', '#050505'],
+    glow: '#60A5FA',
+  },
+  {
+    id: '3',
+    category: 'Spacetime',
+    title: 'Time Moves Slower on Your Face',
+    body: 'Einstein\'s general relativity reveals that gravity warps time itself. Because your feet are closer to Earth\'s center than your head, they experience time slightly slower—by about 90 billionths of a second over a 79-year lifetime. GPS satellites must correct for this: without accounting for relativistic time dilation, your navigation would drift by kilometers every single day.',
+    accent: ['#1A1035', '#4C1D95', '#050505'],
+    glow: '#A78BFA',
+  },
+  {
+    id: '4',
+    category: 'Cosmic Scale',
+    title: 'More Stars Than Grains of Sand',
+    body: 'There are an estimated 200 billion trillion stars in the observable universe—that is a 2 followed by 23 zeros. Every grain of sand on every beach on Earth, combined, numbers roughly 7.5 quintillion. Stars outnumber them by a factor of 26,000 to 1. The universe is not merely large; it is a quantity that human intuition was never designed to hold.',
+    accent: ['#0C1445', '#1E1B4B', '#050505'],
+    glow: '#818CF8',
+  },
+  {
+    id: '5',
+    category: 'Dark Universe',
+    title: 'You Cannot See 95% of Reality',
+    body: 'Everything humanity has ever observed—every galaxy, every star, every planet, every atom—accounts for just 5% of the universe. The remaining 95% is dark matter and dark energy: invisible, undetectable forces that shape cosmic structure without reflecting a single photon. We live inside a cosmos where the stage is mostly hidden, and the actors we can see are barely a footnote.',
+    accent: ['#0F0A1A', '#312E81', '#050505'],
+    glow: '#6366F1',
+  },
+];
