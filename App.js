@@ -12,6 +12,11 @@ import {
   Inter_600SemiBold,
   Inter_700Bold,
 } from '@expo-google-fonts/inter';
+import {
+  Newsreader_400Regular,
+  Newsreader_500Medium,
+  Newsreader_600SemiBold,
+} from '@expo-google-fonts/newsreader';
 import * as SplashScreen from 'expo-splash-screen';
 import DeepDiveHost from './src/components/DeepDiveHost';
 import NebuloreSplash from './src/components/NebuloreSplash';
@@ -37,6 +42,9 @@ export default function App() {
     Inter_500Medium,
     Inter_600SemiBold,
     Inter_700Bold,
+    Newsreader_400Regular,
+    Newsreader_500Medium,
+    Newsreader_600SemiBold,
   });
 
   const hasHydrated = useFactStore((state) => state._hasHydrated);
@@ -100,6 +108,6 @@ export default function App() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#050505',
+    backgroundColor: '#000000',
   },
 });
