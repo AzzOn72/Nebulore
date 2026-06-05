@@ -9,13 +9,20 @@ import Animated, {
   Layout,
 } from 'react-native-reanimated';
 import { useFactStore } from '../store/useFactStore';
+import { useUiStore } from '../store/useUiStore';
 
 export default function SavedFactItem({ fact, index }) {
   const removeFact = useFactStore((state) => state.removeFact);
+  const openDeepDive = useUiStore((state) => state.openDeepDive);
 
   const handleRemove = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     removeFact(fact.id);
+  };
+
+  const handleOpen = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    openDeepDive(fact);
   };
 
   return (
@@ -45,8 +52,12 @@ export default function SavedFactItem({ fact, index }) {
           end={{ x: 1, y: 1 }}
           style={{ padding: 20 }}
         >
-          <View className="mb-3 flex-row items-start justify-between">
-            <View className="flex-row items-center gap-2">
+          <Pressable
+            onPress={handleOpen}
+            accessibilityRole="button"
+            accessibilityLabel={`Open ${fact.title}`}
+          >
+            <View className="mb-3 flex-row items-center gap-2 pr-9">
               <View
                 className="h-1.5 w-1.5 rounded-full"
                 style={{ backgroundColor: fact.glow }}
@@ -56,30 +67,31 @@ export default function SavedFactItem({ fact, index }) {
               </Text>
             </View>
 
-            <Pressable
-              onPress={handleRemove}
-              hitSlop={12}
-              accessibilityRole="button"
-              accessibilityLabel="Remove from saved"
-              className="h-7 w-7 items-center justify-center rounded-full bg-white/10"
+            <Text
+              className="mb-2 font-inter-semibold text-lg leading-6 text-white"
+              numberOfLines={2}
             >
-              <X size={14} color="rgba(255,255,255,0.6)" strokeWidth={2} />
-            </Pressable>
-          </View>
+              {fact.title}
+            </Text>
 
-          <Text
-            className="mb-2 font-inter-semibold text-lg leading-6 text-white"
-            numberOfLines={2}
-          >
-            {fact.title}
-          </Text>
+            <Text
+              className="font-inter text-sm leading-5 text-white/55"
+              numberOfLines={3}
+            >
+              {fact.body}
+            </Text>
+          </Pressable>
 
-          <Text
-            className="font-inter text-sm leading-5 text-white/55"
-            numberOfLines={3}
+          <Pressable
+            onPress={handleRemove}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="Remove from saved"
+            style={{ position: 'absolute', top: 16, right: 16 }}
+            className="h-7 w-7 items-center justify-center rounded-full bg-white/10"
           >
-            {fact.body}
-          </Text>
+            <X size={14} color="rgba(255,255,255,0.6)" strokeWidth={2} />
+          </Pressable>
         </LinearGradient>
       </BlurView>
     </Animated.View>

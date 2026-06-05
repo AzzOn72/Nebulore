@@ -1,12 +1,25 @@
 import { useCallback, useRef } from 'react';
 import { ActivityIndicator, Dimensions, StyleSheet, Text, View } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
+import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
+import { WifiOff } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import CategoryPillMenu from '../components/CategoryPillMenu';
 import FactCard from '../components/FactCard';
+import { useConnectivityStore } from '../services/connectivity';
 import { useFactStore } from '../store/useFactStore';
 import { useFactsStore } from '../store/useFactsStore';
+
+function SubwayPill({ top }) {
+  return (
+    <View style={[styles.subwayPill, { top }]} pointerEvents="none">
+      <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
+      <WifiOff size={13} color="#C4B5FD" strokeWidth={2} />
+      <Text style={styles.subwayText}>Offline · Subway Mode</Text>
+    </View>
+  );
+}
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const LOAD_MORE_THRESHOLD = 3;
@@ -24,6 +37,7 @@ export default function FeedScreen() {
 
   const markSeen = useFactStore((state) => state.markSeen);
   const initialized = useFactsStore((state) => state.initialized);
+  const isOnline = useConnectivityStore((state) => state.isOnline);
 
   const renderItem = useCallback(
     ({ item }) => <FactCard fact={item} />,
@@ -95,6 +109,8 @@ export default function FeedScreen() {
         <CategoryPillMenu />
       </View>
 
+      {!isOnline && <SubwayPill top={insets.top + 52} />}
+
       <FlashList
         data={facts}
         renderItem={renderItem}
@@ -128,5 +144,25 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 10,
+  },
+  subwayPill: {
+    position: 'absolute',
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 999,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(196,181,253,0.25)',
+    zIndex: 20,
+  },
+  subwayText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 12,
+    letterSpacing: 0.3,
+    color: '#E5E5E5',
   },
 });

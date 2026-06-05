@@ -1,8 +1,10 @@
+import { useMemo, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Bookmark } from 'lucide-react-native';
+import { Bookmark, SearchX } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import SavedFactItem from '../components/SavedFactItem';
+import SearchBar from '../components/SearchBar';
 import { useFactStore } from '../store/useFactStore';
 
 function EmptyState() {
@@ -22,9 +24,37 @@ function EmptyState() {
   );
 }
 
+function NoResults({ query }) {
+  return (
+    <View className="flex-1 items-center justify-center px-10 pt-10">
+      <View className="mb-5 h-20 w-20 items-center justify-center rounded-full border border-white/10 bg-white/5">
+        <SearchX size={30} color="rgba(255,255,255,0.25)" strokeWidth={1.5} />
+      </View>
+      <Text className="mb-2 text-center font-inter-semibold text-lg text-white/80">
+        Nothing matches “{query}”
+      </Text>
+      <Text className="text-center font-inter text-sm leading-6 text-white/40">
+        Try a different keyword from your archive.
+      </Text>
+    </View>
+  );
+}
+
 export default function SavedScreen() {
   const insets = useSafeAreaInsets();
   const savedFacts = useFactStore((state) => state.savedFacts);
+  const [query, setQuery] = useState('');
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return savedFacts;
+    return savedFacts.filter((f) => {
+      const haystack = `${f.title} ${f.body} ${f.category}`.toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [savedFacts, query]);
+
+  const hasSaved = savedFacts.length > 0;
 
   return (
     <View className="flex-1 bg-void">
@@ -41,23 +71,35 @@ export default function SavedScreen() {
           paddingBottom: insets.bottom + 110,
         }}
       >
-        <View className="mb-6 px-6">
+        <View className="mb-5 px-6">
           <Text className="font-inter-bold text-3xl text-white">Saved</Text>
           <Text className="mt-1 font-inter text-sm text-white/45">
-            {savedFacts.length === 0
+            {!hasSaved
               ? 'Your cosmic library awaits'
-              : `${savedFacts.length} revelation${savedFacts.length === 1 ? '' : 's'} archived`}
+              : query.trim()
+                ? `${filtered.length} of ${savedFacts.length} match${filtered.length === 1 ? '' : 'es'}`
+                : `${savedFacts.length} revelation${savedFacts.length === 1 ? '' : 's'} archived`}
           </Text>
         </View>
 
-        {savedFacts.length === 0 ? (
+        {hasSaved && (
+          <View className="mb-4 px-6">
+            <SearchBar value={query} onChangeText={setQuery} />
+          </View>
+        )}
+
+        {!hasSaved ? (
           <EmptyState />
+        ) : filtered.length === 0 ? (
+          <NoResults query={query.trim()} />
         ) : (
           <ScrollView
             contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 24 }}
             showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
           >
-            {savedFacts.map((fact, index) => (
+            {filtered.map((fact, index) => (
               <SavedFactItem key={fact.id} fact={fact} index={index} />
             ))}
           </ScrollView>

@@ -13,12 +13,19 @@ import {
   Inter_700Bold,
 } from '@expo-google-fonts/inter';
 import * as SplashScreen from 'expo-splash-screen';
+import DeepDiveHost from './src/components/DeepDiveHost';
 import NebuloreSplash from './src/components/NebuloreSplash';
 import SupernovaBackground from './src/components/SupernovaBackground';
 import { ToastProvider } from './src/context/ToastContext';
 import AppNavigator from './src/navigation/AppNavigator';
+import { initConnectivity } from './src/services/connectivity';
+import {
+  scheduleDailySingularity,
+  wireNotificationTaps,
+} from './src/services/notificationsService';
 import { useFactStore } from './src/store/useFactStore';
 import { useFactsStore } from './src/store/useFactsStore';
+import { useStatsStore } from './src/store/useStatsStore';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -40,6 +47,19 @@ export default function App() {
     if (!hasHydrated) return;
     fetchFacts().catch(() => {});
   }, [hasHydrated, fetchFacts]);
+
+  // Ecosystem boot: streak tracking, connectivity for Subway Mode, and the
+  // Daily Singularity notification + its deep-link tap handler.
+  useEffect(() => {
+    if (!hasHydrated) return;
+
+    useStatsStore.getState().registerActiveDay();
+    initConnectivity();
+    scheduleDailySingularity().catch(() => {});
+
+    const unsubscribe = wireNotificationTaps();
+    return unsubscribe;
+  }, [hasHydrated]);
 
   const appReady = fontsLoaded && hasHydrated && initialized;
 
@@ -67,6 +87,7 @@ export default function App() {
           {appReady && (
             <Animated.View entering={FadeIn.duration(400)} style={styles.root}>
               <AppNavigator />
+              <DeepDiveHost />
             </Animated.View>
           )}
           {showSplash && <NebuloreSplash visible />}
