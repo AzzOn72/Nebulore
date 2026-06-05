@@ -6,7 +6,26 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import SavedFactItem from '../components/SavedFactItem';
 import SearchBar from '../components/SearchBar';
 import { useFactStore } from '../store/useFactStore';
+import { useDebounce } from '../hooks/useDebounce';
 
+// ─── Tokenise once per fact for O(n·k) filtering ─────────────────────────────
+function tokenize(str) {
+  return str
+    .toLowerCase()
+    .split(/[\s,.\-–—]+/)
+    .filter(Boolean);
+}
+
+function buildIndex(facts) {
+  const map = new Map();
+  for (const f of facts) {
+    const tokens = tokenize(`${f.title} ${f.body} ${f.category}`);
+    map.set(f.id, tokens);
+  }
+  return map;
+}
+
+// ─── Empty states ─────────────────────────────────────────────────────────────
 function EmptyState() {
   return (
     <View className="flex-1 items-center justify-center px-10">
@@ -31,7 +50,7 @@ function NoResults({ query }) {
         <SearchX size={30} color="rgba(255,255,255,0.25)" strokeWidth={1.5} />
       </View>
       <Text className="mb-2 text-center font-inter-semibold text-lg text-white/80">
-        Nothing matches “{query}”
+        Nothing matches "{query}"
       </Text>
       <Text className="text-center font-inter text-sm leading-6 text-white/40">
         Try a different keyword from your archive.
@@ -40,26 +59,38 @@ function NoResults({ query }) {
   );
 }
 
+// ─── Screen ───────────────────────────────────────────────────────────────────
 export default function SavedScreen() {
   const insets = useSafeAreaInsets();
   const savedFacts = useFactStore((state) => state.savedFacts);
   const [query, setQuery] = useState('');
 
+  // 100 ms debounce — filter only fires after the user pauses typing
+  const debouncedQuery = useDebounce(query, 100);
+
+  // Pre-built token index — O(n) rebuild only when savedFacts array changes
+  const searchIndex = useMemo(() => buildIndex(savedFacts), [savedFacts]);
+
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = debouncedQuery.trim().toLowerCase();
     if (!q) return savedFacts;
+
+    // Tokenise the query once
+    const queryTokens = tokenize(q);
+
+    // A fact matches if every query token appears in its pre-built token list
     return savedFacts.filter((f) => {
-      const haystack = `${f.title} ${f.body} ${f.category}`.toLowerCase();
-      return haystack.includes(q);
+      const tokens = searchIndex.get(f.id) ?? [];
+      return queryTokens.every((qt) => tokens.some((t) => t.startsWith(qt)));
     });
-  }, [savedFacts, query]);
+  }, [savedFacts, debouncedQuery, searchIndex]);
 
   const hasSaved = savedFacts.length > 0;
 
   return (
     <View className="flex-1 bg-void">
       <LinearGradient
-        colors={['#1A0A2E', '#0F0A1A', '#050505']}
+        colors={['#1A0A2E', '#0F0A1A', '#000000']}
         locations={[0, 0.4, 1]}
         style={{ position: 'absolute', width: '100%', height: '100%' }}
       />
@@ -91,7 +122,7 @@ export default function SavedScreen() {
         {!hasSaved ? (
           <EmptyState />
         ) : filtered.length === 0 ? (
-          <NoResults query={query.trim()} />
+          <NoResults query={debouncedQuery.trim()} />
         ) : (
           <ScrollView
             contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 24 }}
@@ -104,7 +135,7 @@ export default function SavedScreen() {
                 key={fact.id}
                 fact={fact}
                 index={index}
-                query={query}
+                query={debouncedQuery}
               />
             ))}
           </ScrollView>

@@ -6,18 +6,20 @@ import Animated, {
   useAnimatedStyle,
   useFrameCallback,
   useSharedValue,
+  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import GlassSurface from './GlassSurface';
 import PressableScale from './PressableScale';
 import { C, radii, type as T } from '../theme';
+import { spring } from '../theme/motion';
 
 const BAR_COUNT = 18;
 const BARS = Array.from({ length: BAR_COUNT }, (_, i) => i);
 
+// ─── Aurora waveform bar ──────────────────────────────────────────────────────
 function WaveBar({ index, phase, active, color }) {
   const animatedStyle = useAnimatedStyle(() => {
-    // Aurora waveform: layered sines per bar, gated by playback state.
     const t = phase.value;
     const wave =
       Math.sin(t * 2.4 + index * 0.55) * 0.5 +
@@ -33,10 +35,19 @@ function WaveBar({ index, phase, active, color }) {
   return <Animated.View style={[styles.bar, { backgroundColor: color }, animatedStyle]} />;
 }
 
-// Floating "Neural Sync" mini-player: aurora waveform + play/stop + speed.
-export default function NeuralSyncPlayer({ isPlaying, onToggle, speed, onCycleSpeed }) {
+// ─── Neural Sync mini-player ─────────────────────────────────────────────────
+// `glowColor` — the category accent from DeepDiveModal, wires the waveform to
+// the article's identity color when playing.
+export default function NeuralSyncPlayer({
+  isPlaying,
+  onToggle,
+  speed,
+  onCycleSpeed,
+  glowColor,
+}) {
   const phase = useSharedValue(0);
   const active = useSharedValue(0);
+  const playScale = useSharedValue(1);
 
   useFrameCallback(() => {
     phase.value += 0.05;
@@ -46,26 +57,48 @@ export default function NeuralSyncPlayer({ isPlaying, onToggle, speed, onCycleSp
     active.value = withTiming(isPlaying ? 1 : 0, { duration: 320 });
   }, [isPlaying, active]);
 
+  const playButtonStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: playScale.value }],
+  }));
+
+  const handleToggle = () => {
+    // Spring-punch the play button on every tap
+    playScale.value = withSpring(0.88, spring.snappy, () => {
+      playScale.value = withSpring(1, spring.snappy);
+    });
+    Haptics.impactAsync(
+      isPlaying ? Haptics.ImpactFeedbackStyle.Light : Haptics.ImpactFeedbackStyle.Medium,
+    );
+    onToggle?.();
+  };
+
   const handleSpeed = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     onCycleSpeed?.();
   };
 
+  // Waveform colour: category glow when playing, muted when idle
+  const waveColor = isPlaying ? (glowColor ?? C.accentHi) : C.textTertiary;
+
   return (
     <GlassSurface variant="thick" style={styles.container}>
-      <PressableScale
-        onPress={onToggle}
-        style={[styles.playButton, isPlaying && styles.playButtonActive]}
-        accessibilityRole="button"
-        accessibilityLabel={isPlaying ? 'Stop narration' : 'Listen to article'}
-      >
-        {isPlaying ? (
-          <Square size={16} color={C.accentHi} fill={C.accentHi} strokeWidth={1.75} />
-        ) : (
-          <Headphones size={18} color={C.textPrimary} strokeWidth={1.75} />
-        )}
-      </PressableScale>
+      {/* Play / Stop — spring-scaled */}
+      <Animated.View style={playButtonStyle}>
+        <PressableScale
+          onPress={handleToggle}
+          style={[styles.playButton, isPlaying && styles.playButtonActive]}
+          accessibilityRole="button"
+          accessibilityLabel={isPlaying ? 'Stop narration' : 'Listen to article'}
+        >
+          {isPlaying ? (
+            <Square size={16} color={glowColor ?? C.accentHi} fill={glowColor ?? C.accentHi} strokeWidth={1.75} />
+          ) : (
+            <Headphones size={18} color={C.textPrimary} strokeWidth={1.75} />
+          )}
+        </PressableScale>
+      </Animated.View>
 
+      {/* Label + waveform */}
       <View style={styles.middle}>
         <Text style={styles.label}>{isPlaying ? 'Neural Sync' : 'Listen'}</Text>
         <View style={styles.waveRow}>
@@ -75,12 +108,13 @@ export default function NeuralSyncPlayer({ isPlaying, onToggle, speed, onCycleSp
               index={i}
               phase={phase}
               active={active}
-              color={isPlaying ? C.accentHi : C.textTertiary}
+              color={waveColor}
             />
           ))}
         </View>
       </View>
 
+      {/* Speed selector */}
       <PressableScale
         onPress={handleSpeed}
         style={styles.speedButton}

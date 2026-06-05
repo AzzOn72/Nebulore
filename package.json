@@ -13,6 +13,7 @@
     "@shopify/react-native-skia": "2.2.12",
     "@supabase/supabase-js": "^2.107.0",
     "dotenv": "^17.4.2",
+    "eas-cli": "^20.0.0",
     "expo": "~54.0.8",
     "expo-audio": "~1.1.1",
     "expo-blur": "~15.0.8",
@@ -48,6 +49,7 @@
   },
   "private": true,
   "devDependencies": {
+    "babel-plugin-transform-remove-console": "^6.9.4",
     "babel-preset-expo": "~54.0.10"
   }
 }

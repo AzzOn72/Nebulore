@@ -1,16 +1,27 @@
-import { useMemo } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Flame, Sparkles, Trophy } from 'lucide-react-native';
+import * as Haptics from 'expo-haptics';
+import { Flame, GitBranch, PieChart, Sparkles, Trophy } from 'lucide-react-native';
+import Animated, {
+  FadeIn,
+  FadeOut,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import CosmicRankBadge from '../components/CosmicRankBadge';
 import StatsRing from '../components/StatsRing';
+import NeuralMapCanvas from '../components/skia/NeuralMapCanvas';
 import CountUp from '../components/CountUp';
 import { CATEGORIES } from '../config/categories';
 import { getRankForCount, useStatsStore } from '../store/useStatsStore';
 import { C, fonts } from '../theme';
+import { spring } from '../theme/motion';
 
+// ─── Glass card (reused from original) ───────────────────────────────────────
 function GlassCard({ children, style }) {
   return (
     <View style={[styles.card, style]}>
@@ -38,8 +49,68 @@ function MetricCard({ icon, value, label, accent }) {
   );
 }
 
+// ─── Map / Chart segment toggle ───────────────────────────────────────────────
+function ViewToggle({ active, onChange }) {
+  const chartScale = useSharedValue(1);
+  const mapScale = useSharedValue(1);
+
+  const tap = (next, scaleRef) => {
+    scaleRef.value = withSpring(0.88, spring.snappy, () => {
+      scaleRef.value = withSpring(1, spring.snappy);
+    });
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onChange(next);
+  };
+
+  return (
+    <View style={styles.toggleRow}>
+      {[
+        { key: 'chart', icon: <PieChart size={13} strokeWidth={2} />, label: 'Chart' },
+        { key: 'map', icon: <GitBranch size={13} strokeWidth={2} />, label: 'Map' },
+      ].map(({ key, icon, label }) => {
+        const isActive = active === key;
+        const scaleRef = key === 'chart' ? chartScale : mapScale;
+        const animStyle = useAnimatedStyle(() => ({
+          transform: [{ scale: scaleRef.value }],
+        }));
+        return (
+          <Animated.View key={key} style={animStyle}>
+            <Pressable
+              onPress={() => tap(key, scaleRef)}
+              style={[styles.togglePill, isActive && styles.togglePillActive]}
+            >
+              {/* Icon inherits color from style */}
+              <View style={{ opacity: isActive ? 1 : 0.45 }}>
+                {/* Clone icon with runtime color */}
+                {key === 'chart' ? (
+                  <PieChart
+                    size={13}
+                    strokeWidth={2}
+                    color={isActive ? C.accentHi : C.textSecondary}
+                  />
+                ) : (
+                  <GitBranch
+                    size={13}
+                    strokeWidth={2}
+                    color={isActive ? C.accentHi : C.textSecondary}
+                  />
+                )}
+              </View>
+              <Text style={[styles.toggleLabel, isActive && styles.toggleLabelActive]}>
+                {label}
+              </Text>
+            </Pressable>
+          </Animated.View>
+        );
+      })}
+    </View>
+  );
+}
+
+// ─── Main screen ──────────────────────────────────────────────────────────────
 export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
+  const [disciplineView, setDisciplineView] = useState('chart'); // 'chart' | 'map'
 
   const totalDeepDives = useStatsStore((s) => s.totalDeepDives);
   const perCategory = useStatsStore((s) => s.perCategory);
@@ -76,8 +147,9 @@ export default function DashboardScreen() {
 
   return (
     <View className="flex-1 bg-void">
+      {/* True-black OLED gradient */}
       <LinearGradient
-        colors={['#0A0A1F', '#0B0716', '#050505']}
+        colors={['#0A0A1F', '#0B0716', '#000000']}
         locations={[0, 0.4, 1]}
         style={{ position: 'absolute', width: '100%', height: '100%' }}
       />
@@ -95,7 +167,7 @@ export default function DashboardScreen() {
           <Text style={styles.heading}>Your Mind, Quantified</Text>
         </View>
 
-        {/* Cosmic Rank */}
+        {/* ── Cosmic Rank ─────────────────────────────────────────────── */}
         <GlassCard style={{ marginBottom: 16 }}>
           <View style={styles.rankBlock}>
             <View style={styles.rankLabelRow}>
@@ -132,7 +204,7 @@ export default function DashboardScreen() {
           </View>
         </GlassCard>
 
-        {/* Streaks */}
+        {/* ── Streaks ──────────────────────────────────────────────────── */}
         <View style={styles.metricRow}>
           <MetricCard
             icon={<Flame size={20} color="#FB923C" strokeWidth={2} />}
@@ -148,44 +220,74 @@ export default function DashboardScreen() {
           />
         </View>
 
-        {/* Discipline Breakdown */}
+        {/* ── Discipline Breakdown — Chart or Neural Map ──────────────── */}
         <GlassCard style={{ marginTop: 16 }}>
-          <Text style={styles.sectionTitle}>Discipline Breakdown</Text>
-          <Text style={styles.sectionSub}>
-            Total knowledge absorbed across the cosmos
-          </Text>
-
-          <View style={styles.ringWrap}>
-            <StatsRing data={ringData} size={196} strokeWidth={22} />
+          <View style={styles.sectionHeader}>
+            <View>
+              <Text style={styles.sectionTitle}>Discipline Breakdown</Text>
+              <Text style={styles.sectionSub}>
+                {disciplineView === 'map'
+                  ? 'Your constellation of explored knowledge'
+                  : 'Total knowledge absorbed across the cosmos'}
+              </Text>
+            </View>
+            <ViewToggle active={disciplineView} onChange={setDisciplineView} />
           </View>
 
-          <View style={styles.legend}>
-            {ringData.map((d) => {
-              const pct =
-                topCategoryTotal > 0
-                  ? Math.round((d.value / topCategoryTotal) * 100)
-                  : 0;
-              return (
-                <View key={d.key} style={styles.legendRow}>
-                  <View style={styles.legendLeft}>
-                    <View
-                      style={[styles.legendDot, { backgroundColor: d.color }]}
-                    />
-                    <Text style={styles.legendLabel}>{d.label}</Text>
-                  </View>
-                  <Text style={styles.legendValue}>
-                    {d.value}
-                    <Text style={styles.legendPct}>  ·  {pct}%</Text>
-                  </Text>
-                </View>
-              );
-            })}
-          </View>
+          {disciplineView === 'chart' ? (
+            <Animated.View
+              key="chart"
+              entering={FadeIn.duration(280)}
+              exiting={FadeOut.duration(200)}
+            >
+              <View style={styles.ringWrap}>
+                <StatsRing data={ringData} size={196} strokeWidth={22} />
+              </View>
 
-          {topCategoryTotal === 0 && (
-            <Text style={styles.emptyHint}>
-              Open a Deep Dive to begin charting your disciplines.
-            </Text>
+              <View style={styles.legend}>
+                {ringData.map((d) => {
+                  const pct =
+                    topCategoryTotal > 0
+                      ? Math.round((d.value / topCategoryTotal) * 100)
+                      : 0;
+                  return (
+                    <View key={d.key} style={styles.legendRow}>
+                      <View style={styles.legendLeft}>
+                        <View style={[styles.legendDot, { backgroundColor: d.color }]} />
+                        <Text style={styles.legendLabel}>{d.label}</Text>
+                      </View>
+                      <Text style={styles.legendValue}>
+                        {d.value}
+                        <Text style={styles.legendPct}>  ·  {pct}%</Text>
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+
+              {topCategoryTotal === 0 && (
+                <Text style={styles.emptyHint}>
+                  Open a Deep Dive to begin charting your disciplines.
+                </Text>
+              )}
+            </Animated.View>
+          ) : (
+            <Animated.View
+              key="map"
+              entering={FadeIn.duration(340)}
+              exiting={FadeOut.duration(200)}
+              style={styles.mapWrap}
+            >
+              <NeuralMapCanvas
+                categories={CATEGORIES}
+                perCategory={perCategory}
+              />
+              {topCategoryTotal === 0 && (
+                <Text style={[styles.emptyHint, { marginTop: 8 }]}>
+                  Explore categories to light up your constellation.
+                </Text>
+              )}
+            </Animated.View>
           )}
         </GlassCard>
       </ScrollView>
@@ -213,24 +315,6 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
     color: C.textPrimary,
   },
-  totalBlock: {
-    alignItems: 'center',
-    marginTop: 18,
-  },
-  totalValue: {
-    fontFamily: 'Inter_700Bold',
-    fontSize: 44,
-    letterSpacing: -1,
-    color: C.textPrimary,
-  },
-  totalLabel: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 12,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    color: C.textTertiary,
-    marginTop: 2,
-  },
   card: {
     borderRadius: 24,
     overflow: 'hidden',
@@ -254,6 +338,24 @@ const styles = StyleSheet.create({
     fontSize: 11,
     letterSpacing: 3,
     textTransform: 'uppercase',
+  },
+  totalBlock: {
+    alignItems: 'center',
+    marginTop: 18,
+  },
+  totalValue: {
+    fontFamily: 'Inter_700Bold',
+    fontSize: 44,
+    letterSpacing: -1,
+    color: C.textPrimary,
+  },
+  totalLabel: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 12,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    color: C.textTertiary,
+    marginTop: 2,
   },
   progressTrack: {
     width: '100%',
@@ -304,6 +406,13 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.45)',
     marginTop: 2,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 4,
+  },
   sectionTitle: {
     fontFamily: 'Inter_700Bold',
     fontSize: 18,
@@ -314,7 +423,39 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: 'rgba(255,255,255,0.45)',
     marginTop: 4,
+    maxWidth: 180,
   },
+  // ── Toggle ──────────────────────────────────────────────────────────
+  toggleRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 2,
+  },
+  togglePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  togglePillActive: {
+    borderColor: 'rgba(196,181,253,0.35)',
+    backgroundColor: 'rgba(139,124,246,0.14)',
+  },
+  toggleLabel: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 12,
+    color: C.textSecondary,
+    letterSpacing: 0.2,
+  },
+  toggleLabelActive: {
+    color: C.accentHi,
+  },
+  // ── Chart view ───────────────────────────────────────────────────────
   ringWrap: {
     alignItems: 'center',
     marginVertical: 22,
@@ -351,6 +492,12 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_400Regular',
     fontSize: 13,
     color: 'rgba(255,255,255,0.4)',
+  },
+  // ── Map view ─────────────────────────────────────────────────────────
+  mapWrap: {
+    alignItems: 'center',
+    marginTop: 16,
+    marginBottom: 8,
   },
   emptyHint: {
     fontFamily: 'Inter_400Regular',

@@ -7,16 +7,19 @@ import {
   Text,
   View,
 } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { Bookmark, ChevronLeft, Share2 } from 'lucide-react-native';
 import Animated, {
   FadeIn,
   FadeOut,
+  SlideInDown,
   ZoomIn,
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
+  withSpring,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import NeuralSyncPlayer from './NeuralSyncPlayer';
@@ -25,16 +28,16 @@ import { useFactStore } from '../store/useFactStore';
 import { useNeuralSync } from '../hooks/useNeuralSync';
 import { formatShareMessage } from '../utils/formatShareMessage';
 import { C, type as T, radii, space } from '../theme';
+import { spring } from '../theme/motion';
 
 const AnimatedScrollView = Animated.ScrollView;
 
+// ─── Paragraph renderer ──────────────────────────────────────────────────────
 function Paragraphs({ text }) {
   const blocks = text.split(/\n\n+/).filter(Boolean);
-
   if (blocks.length <= 1) {
     return <Text style={styles.paragraph}>{text}</Text>;
   }
-
   return blocks.map((block, index) => (
     <Text
       key={index}
@@ -45,6 +48,7 @@ function Paragraphs({ text }) {
   ));
 }
 
+// ─── Main component ───────────────────────────────────────────────────────────
 export default function DeepDiveModal({ visible, fact, onClose }) {
   const insets = useSafeAreaInsets();
 
@@ -57,6 +61,9 @@ export default function DeepDiveModal({ visible, fact, onClose }) {
   const scrollY = useSharedValue(0);
   const [scrollSpan, setScrollSpan] = useState(1);
 
+  // The floating dock measures its own height so paddingBottom is always exact.
+  const footerH = useSharedValue(0);
+
   const onScroll = useAnimatedScrollHandler({
     onScroll: (e) => {
       scrollY.value = e.contentOffset.y;
@@ -68,17 +75,24 @@ export default function DeepDiveModal({ visible, fact, onClose }) {
     return { height: `${p * 100}%` };
   });
 
+  // Drive paddingBottom from the measured footer height — no magic numbers.
+  const scrollPadStyle = useAnimatedStyle(() => ({
+    paddingBottom: footerH.value + insets.bottom + 24,
+  }));
+
   const handleClose = () => {
-    if (fact) {
-      markSeen(fact.id);
-    }
+    if (fact) markSeen(fact.id);
     neural.stop();
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     onClose();
   };
 
   const handleListen = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Haptics.impactAsync(
+      neural.isPlaying
+        ? Haptics.ImpactFeedbackStyle.Light
+        : Haptics.ImpactFeedbackStyle.Medium,
+    );
     neural.toggle();
   };
 
@@ -98,7 +112,7 @@ export default function DeepDiveModal({ visible, fact, onClose }) {
     try {
       await Share.share({ message: formatShareMessage(fact) });
     } catch (_) {
-      // User cancelled
+      // user cancelled
     }
   };
 
@@ -113,16 +127,21 @@ export default function DeepDiveModal({ visible, fact, onClose }) {
       onRequestClose={handleClose}
     >
       <Animated.View
-        entering={ZoomIn.springify().damping(22).stiffness(140).mass(1.1)}
+        entering={ZoomIn.springify()
+          .damping(spring.heavy.damping)
+          .stiffness(spring.heavy.stiffness)
+          .mass(spring.heavy.mass)}
         exiting={FadeOut.duration(220).withInitialValues({ opacity: 1 })}
         style={[styles.container, { paddingTop: insets.top }]}
       >
+        {/* Full-bleed OLED true-black canvas */}
         <LinearGradient
           colors={[`${fact.glow}14`, '#050505', '#000000']}
           locations={[0, 0.32, 1]}
           style={StyleSheet.absoluteFill}
         />
 
+        {/* ── Header ────────────────────────────────────────────────── */}
         <View style={styles.header}>
           <Pressable
             onPress={handleClose}
@@ -140,19 +159,17 @@ export default function DeepDiveModal({ visible, fact, onClose }) {
           </PressableScale>
         </View>
 
-        {/* Reading-progress ray — a light ray reaching its end. */}
+        {/* ── Reading-progress ray ───────────────────────────────────── */}
         <View style={[styles.progressTrack, { top: insets.top + 70 }]}>
           <Animated.View
             style={[styles.progressFill, { backgroundColor: fact.glow }, progressStyle]}
           />
         </View>
 
+        {/* ── Scrollable reading area — padded by measured dock height ── */}
         <AnimatedScrollView
           style={styles.scroll}
-          contentContainerStyle={[
-            styles.scrollContent,
-            { paddingBottom: insets.bottom + 200 },
-          ]}
+          contentContainerStyle={[styles.scrollContent, scrollPadStyle]}
           showsVerticalScrollIndicator={false}
           scrollEventThrottle={16}
           onScroll={onScroll}
@@ -174,35 +191,64 @@ export default function DeepDiveModal({ visible, fact, onClose }) {
           </Animated.View>
         </AnimatedScrollView>
 
-        <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
+        {/* ── Floating glass dock — self-measures its height ─────────── */}
+        <Animated.View
+          entering={SlideInDown.springify()
+            .damping(spring.heavy.damping)
+            .stiffness(spring.heavy.stiffness)
+            .mass(spring.heavy.mass)
+            .delay(180)}
+          style={[styles.dock, { paddingBottom: insets.bottom + 16 }]}
+          onLayout={(e) => {
+            const h = e.nativeEvent.layout.height;
+            footerH.value = withSpring(h, spring.snappy);
+          }}
+        >
+          {/* Top-edge luminous scrim — prevents text bleeding through glass */}
           <LinearGradient
-            colors={['transparent', 'rgba(0,0,0,0.95)', '#000000']}
-            style={styles.footerGradient}
+            colors={['transparent', 'rgba(0,0,0,0.72)', '#000000']}
+            style={styles.dockScrim}
             pointerEvents="none"
           />
 
-          <NeuralSyncPlayer
-            isPlaying={neural.isPlaying}
-            onToggle={handleListen}
-            speed={neural.speed}
-            onCycleSpeed={neural.cycleSpeed}
+          {/* Glass substrate */}
+          <BlurView intensity={48} tint="dark" style={StyleSheet.absoluteFill} />
+          <LinearGradient
+            colors={['rgba(255,255,255,0.055)', 'rgba(255,255,255,0.015)']}
+            start={{ x: 0.2, y: 0 }}
+            end={{ x: 0.8, y: 1 }}
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
           />
 
-          <PressableScale
-            onPress={handleSave}
-            style={[styles.saveButton, isSaved && styles.saveButtonActive]}
-          >
-            <Bookmark
-              size={19}
-              color={isSaved ? C.accentHi : C.textPrimary}
-              fill={isSaved ? C.accentHi : 'transparent'}
-              strokeWidth={1.75}
+          {/* Top hairline — edge-lit glass border */}
+          <View style={styles.dockBorder} />
+
+          <View style={styles.dockContent}>
+            <NeuralSyncPlayer
+              isPlaying={neural.isPlaying}
+              onToggle={handleListen}
+              speed={neural.speed}
+              onCycleSpeed={neural.cycleSpeed}
+              glowColor={fact.glow}
             />
-            <Text style={[styles.saveLabel, isSaved && styles.saveLabelActive]}>
-              {isSaved ? 'Saved to Library' : 'Save to Library'}
-            </Text>
-          </PressableScale>
-        </View>
+
+            <PressableScale
+              onPress={handleSave}
+              style={[styles.saveButton, isSaved && styles.saveButtonActive]}
+            >
+              <Bookmark
+                size={19}
+                color={isSaved ? C.accentHi : C.textPrimary}
+                fill={isSaved ? C.accentHi : 'transparent'}
+                strokeWidth={1.75}
+              />
+              <Text style={[styles.saveLabel, isSaved && styles.saveLabelActive]}>
+                {isSaved ? 'Saved to Library' : 'Save to Library'}
+              </Text>
+            </PressableScale>
+          </View>
+        </Animated.View>
       </Animated.View>
     </Modal>
   );
@@ -260,6 +306,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: space[6],
     paddingTop: 8,
+    // paddingBottom driven by scrollPadStyle (Animated) — no static value here
   },
   categoryRow: {
     flexDirection: 'row',
@@ -296,21 +343,33 @@ const styles = StyleSheet.create({
   paragraphSpaced: {
     marginBottom: 20,
   },
-  footer: {
+  // ── Floating dock ─────────────────────────────────────────────────
+  dock: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    paddingHorizontal: space[6],
-    paddingTop: space[4],
-    gap: 12,
+    overflow: 'hidden',
   },
-  footerGradient: {
+  dockScrim: {
     position: 'absolute',
     left: 0,
     right: 0,
-    top: -48,
-    height: 48,
+    top: -64,
+    height: 64,
+  },
+  dockBorder: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+  },
+  dockContent: {
+    paddingHorizontal: space[6],
+    paddingTop: space[4],
+    gap: 12,
   },
   saveButton: {
     flexDirection: 'row',
@@ -321,7 +380,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     borderWidth: 1,
     borderColor: C.hairlineLum,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
   },
   saveButtonActive: {
     borderColor: 'rgba(196,181,253,0.45)',

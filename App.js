@@ -23,6 +23,7 @@ import NebuloreSplash from './src/components/NebuloreSplash';
 import SupernovaBackground from './src/components/SupernovaBackground';
 import { ToastProvider } from './src/context/ToastContext';
 import AppNavigator from './src/navigation/AppNavigator';
+import { startCacheManager } from './src/services/CacheManagerService';
 import { initConnectivity } from './src/services/connectivity';
 import {
   scheduleDailySingularity,
@@ -56,14 +57,16 @@ export default function App() {
     fetchFacts().catch(() => {});
   }, [hasHydrated, fetchFacts]);
 
-  // Ecosystem boot: streak tracking, connectivity for Subway Mode, and the
-  // Daily Singularity notification + its deep-link tap handler.
+  // Ecosystem boot: streak tracking, connectivity for Subway Mode, the
+  // Daily Singularity notification + its deep-link tap handler, and the
+  // background cache manager that keeps content warm for offline reads.
   useEffect(() => {
     if (!hasHydrated) return;
 
     useStatsStore.getState().registerActiveDay();
     initConnectivity();
     scheduleDailySingularity().catch(() => {});
+    startCacheManager(); // idempotent — safe to call here
 
     const unsubscribe = wireNotificationTaps();
     return unsubscribe;
